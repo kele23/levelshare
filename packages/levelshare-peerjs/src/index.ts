@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 class SyncPeerClient extends AbstractSyncClient {
     private connection: DataConnection;
 
-    constructor(db: ShareLevel<unknown>, connection: DataConnection) {
+    constructor(db: ShareLevel<any>, connection: DataConnection) {
         super(db);
         this.connection = connection;
     }
@@ -35,7 +35,7 @@ class SyncPeerClient extends AbstractSyncClient {
 class SyncPeerServer extends AbstractSyncServer {
     private connection: DataConnection;
 
-    constructor(db: ShareLevel<unknown>, connection: DataConnection) {
+    constructor(db: ShareLevel<any>, connection: DataConnection) {
         super(db);
         this.connection = connection;
 
@@ -61,10 +61,10 @@ export type SyncConnection = {
  */
 export class SyncP2PPeerJS extends EventEmitter {
     private peer: Peer;
-    private db: ShareLevel<unknown>;
+    private db: ShareLevel<any>;
     private connections: Map<string, SyncConnection>;
 
-    constructor(db: ShareLevel<unknown>) {
+    constructor(db: ShareLevel<any>) {
         super();
         this.db = db;
         this.connections = new Map();

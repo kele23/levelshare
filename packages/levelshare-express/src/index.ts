@@ -2,7 +2,7 @@ import { default as core, default as express } from 'express';
 import { ShareLevel, AbstractSyncServer } from '@kele23/levelshare';
 
 export class SyncServerExpress extends AbstractSyncServer {
-    constructor(db: ShareLevel<unknown>) {
+    constructor(db: ShareLevel<any>) {
         super(db);
     }
 

@@ -6,7 +6,7 @@ export type ClientConfig = AxiosRequestConfig<any> & {};
 export class SyncHttpClient extends AbstractSyncClient {
     private _axios: AxiosInstance;
 
-    constructor(db: ShareLevel<unknown>, baseURL: string, options?: ClientConfig) {
+    constructor(db: ShareLevel<any>, baseURL: string, options?: ClientConfig) {
         super(db);
         this._axios = axios.create({ ...options, baseURL });
     }
