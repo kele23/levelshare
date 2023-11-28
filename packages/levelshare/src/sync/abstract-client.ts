@@ -1,25 +1,22 @@
 import UUID from 'pure-uuid';
-import {
-    OfferSyncRequest,
-    OfferSyncResponse,
-    PushSyncRequest,
-    PushSyncResponse,
-    SyncOptions,
-} from '../interfaces/sync.js';
-import { Feed, Friend } from '../interfaces/db.js';
-import { base64Encode } from '../utils/base64.js';
-import { msgDecode, msgEncode } from '../utils/msgpack.js';
+import { Feed } from '../interfaces/db.js';
 import {
     DiscoverySyncRequest,
     DiscoverySyncResponse,
     FeedSyncRequest,
     FeedSyncResponse,
+    OfferSyncRequest,
+    OfferSyncResponse,
     PullSyncRequest,
     PullSyncResponse,
+    PushSyncRequest,
+    PushSyncResponse,
+    Range,
+    SyncOptions,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
 import { logger } from '../utils/logger.js';
-import { AbstractIteratorOptions } from 'abstract-level';
+import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
 export abstract class AbstractSyncClient {
     protected _db: ShareLevel<any>;
@@ -166,7 +163,7 @@ export abstract class AbstractSyncClient {
             return;
         }
 
-        const search: AbstractIteratorOptions<string, Feed> = {
+        const search: Range = {
             lte: endSeq,
         };
         if (startSeq) {

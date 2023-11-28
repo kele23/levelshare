@@ -23,10 +23,11 @@
     "types": "lib/index.d.ts",
     "directories": {
         "lib": "lib",
-        "test": "__tests__"
+        "src": "src"
     },
     "files": [
-        "lib"
+        "lib",
+        "src"
     ],
     "publishConfig": {
         "access": "public"
@@ -45,8 +46,6 @@
         "url": "https://github.com/kele23/levelshare/issues"
     },
     "dependencies": {
-        "@kele23/levelshare": "^0.2.0",
-        "axios": "^1.6.2",
-        "peerjs": "^1.5.1"
+        "@kele23/levelshare": "^0.2.0"
     }
 }

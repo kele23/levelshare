@@ -19,10 +19,12 @@
     "types": "lib/index.d.ts",
     "directories": {
         "lib": "lib",
+        "src": "src",
         "test": "__tests__"
     },
     "files": [
-        "lib"
+        "lib",
+        "src"
     ],
     "publishConfig": {
         "access": "public"

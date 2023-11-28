@@ -6,6 +6,13 @@ export type SyncOptions = {
     iterval?: number;
 };
 
+export type Range = {
+    gt?: string;
+    lt?: string;
+    gte?: string;
+    lte?: string;
+};
+
 ////////////////////////////////// REQUEST
 export type SyncRequest = {
     transaction: string;
@@ -16,12 +23,7 @@ export type DiscoverySyncRequest = SyncRequest & {
     id: string;
 };
 
-export type FeedSyncRequest = SyncRequest & {
-    gt?: string;
-    lt?: string;
-    gte?: string;
-    lte?: string;
-};
+export type FeedSyncRequest = SyncRequest & Range;
 
 export type PullSyncRequest = SyncRequest & {
     keys: string[];
