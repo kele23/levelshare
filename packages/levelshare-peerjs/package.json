@@ -1,6 +1,6 @@
 {
     "name": "@kele23/levelshare-peerjs",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "levelshare integration with peerjs",
     "type": "module",
     "keywords": [
@@ -39,7 +39,7 @@
         "url": "https://github.com/kele23/levelshare/issues"
     },
     "dependencies": {
-        "@kele23/levelshare": "^0.1.0",
+        "@kele23/levelshare": "^0.2.0",
         "peerjs": "^1.5.1"
     }
 }
