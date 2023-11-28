@@ -1,6 +1,6 @@
 {
     "name": "@kele23/levelshare-express",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "levelshare express integration",
     "type": "module",
     "keywords": [
@@ -46,6 +46,6 @@
         "url": "https://github.com/kele23/levelshare/issues"
     },
     "dependencies": {
-        "@kele23/levelshare": "^0.2.0"
+        "@kele23/levelshare": "^0.2.1"
     }
 }
