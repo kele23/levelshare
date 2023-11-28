@@ -1,6 +1,6 @@
 {
     "name": "@kele23/levelshare-express",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "levelshare express integration",
     "type": "module",
     "keywords": [
@@ -45,7 +45,7 @@
         "url": "https://github.com/kele23/levelshare/issues"
     },
     "dependencies": {
-        "@kele23/levelshare": "*",
+        "@kele23/levelshare": "^0.1.0",
         "axios": "^1.6.2",
         "peerjs": "^1.5.1"
     }
