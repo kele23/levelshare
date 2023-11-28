@@ -5,7 +5,7 @@
 ## Usage
 
 ```
-const levelshare = require('@kele23/levelshare');
+import { ShareLevel } from '@kele23/levelshare';
 
 // TODO: DEMONSTRATE API
 ```

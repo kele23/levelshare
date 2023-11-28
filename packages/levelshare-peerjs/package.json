@@ -1,0 +1,45 @@
+{
+    "name": "@kele23/levelshare-peerjs",
+    "version": "0.0.0",
+    "description": "levelshare integration with peerjs",
+    "type": "module",
+    "keywords": [
+        "peerjs",
+        "levelshare",
+        "leveldb",
+        "js",
+        "nodejs",
+        "browser",
+        "indexeddb",
+        "db-sync"
+    ],
+    "author": "Michele Scala <scala233@gmail.com>",
+    "homepage": "https://github.com/kele23/levelshare#readme",
+    "license": "MIT",
+    "main": "lib/index.js",
+    "types": "lib/index.d.ts",
+    "directories": {
+        "lib": "lib",
+        "test": "__tests__"
+    },
+    "files": [
+        "lib"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kele23/levelshare.git"
+    },
+    "scripts": {
+        "tsc": "tsc"
+    },
+    "bugs": {
+        "url": "https://github.com/kele23/levelshare/issues"
+    },
+    "dependencies": {
+        "peerjs": "^1.5.1",
+        "@kele23/levelshare": "*"
+    }
+}
