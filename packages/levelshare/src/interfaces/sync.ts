@@ -1,9 +1,15 @@
 import { Feed } from './db.js';
 
+////////////////////////////////// OPTIONS
+export type SyncOptions = {
+    continuous?: boolean;
+    iterval?: number;
+};
+
 ////////////////////////////////// REQUEST
 export type SyncRequest = {
     transaction: string;
-    type: 'discovery' | 'feed' | 'pull';
+    type: 'discovery' | 'feed' | 'pull' | 'offer' | 'push';
 };
 
 export type DiscoverySyncRequest = SyncRequest & {
@@ -18,6 +24,18 @@ export type FeedSyncRequest = SyncRequest & {
 };
 
 export type PullSyncRequest = SyncRequest & {
+    keys: string[];
+};
+
+export type OfferSyncRequest = SyncRequest & {
+    id: string;
+    feed: [string, Feed][];
+    startSeq?: string;
+    endSeq: string;
+};
+
+export type PushSyncRequest = SyncRequest & {
+    values: any[];
     keys: string[];
 };
 
@@ -38,6 +56,12 @@ export type FeedSyncResponse = SyncResponse & {
     feed: [string, Feed][];
 };
 
+export type OfferSyncResponse = SyncResponse & {
+    keys: string[];
+};
+
 export type PullSyncResponse = SyncResponse & {
     values: any[];
 };
+
+export type PushSyncResponse = SyncResponse & {};

@@ -1,16 +1,21 @@
 import { Feed } from '../interfaces/db.js';
-import { ShareLevel } from '../level/share-level.js';
-import { msgDecode, msgEncode } from '../utils/msgpack.js';
 import {
     DiscoverySyncRequest,
     DiscoverySyncResponse,
     FeedSyncRequest,
     FeedSyncResponse,
+    OfferSyncRequest,
+    OfferSyncResponse,
     PullSyncRequest,
     PullSyncResponse,
+    PushSyncRequest,
+    PushSyncResponse,
     SyncRequest,
     SyncResponse,
 } from '../interfaces/sync.js';
+import { ShareLevel } from '../level/share-level.js';
+import { logger } from '../utils/logger.js';
+import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
 export abstract class AbstractSyncServer {
     protected _db: ShareLevel<any>;
@@ -37,6 +42,14 @@ export abstract class AbstractSyncServer {
                     response = await this._pullReceive(request as PullSyncRequest);
                     break;
                 }
+                case 'offer': {
+                    response = await this._offerReceive(request as OfferSyncRequest);
+                    break;
+                }
+                case 'push': {
+                    response = await this._pushReceive(request as PushSyncRequest);
+                    break;
+                }
                 default: {
                     response = {
                         transaction: request.transaction,
@@ -46,7 +59,7 @@ export abstract class AbstractSyncServer {
                 }
             }
         } catch (e) {
-            console.warn(e);
+            logger.warn('Exception occurred', e);
             response = {
                 transaction: request.transaction,
                 ok: false,
@@ -99,5 +112,30 @@ export abstract class AbstractSyncServer {
         const dataLevel = this._db.data;
         const values = await dataLevel.getMany<String, Uint8Array>(request.keys, { valueEncoding: 'buffer' });
         return { values, ok: true, transaction: request.transaction };
+    }
+
+    protected async _offerReceive(request: OfferSyncRequest): Promise<OfferSyncResponse> {
+        const keys = await this._db.importFeed({
+            transaction: request.transaction,
+            feed: request.feed,
+            startSeq: request.startSeq,
+            endSeq: request.endSeq,
+            otherId: request.id,
+        });
+
+        return { keys, ok: true, transaction: request.transaction };
+    }
+
+    protected async _pushReceive(request: PushSyncRequest): Promise<PushSyncResponse> {
+        const dataLevel = this._db.data;
+        const keys = request.keys;
+        const values = request.values;
+        for (let i = 0; i < values.length; i++) {
+            const key = keys[i];
+            const value = values[i];
+            await dataLevel.put(key, value, { valueEncoding: 'buffer' });
+        }
+
+        return { ok: true, transaction: request.transaction };
     }
 }

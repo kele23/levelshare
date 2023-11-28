@@ -4,6 +4,11 @@
     "workspaces": [
         "packages/*"
     ],
+    "scripts": {
+        "build": "npm run tsc",
+        "tsc": "lerna run tsc",
+        "publish": "lerna run tsc & lerna publish"
+    },
     "devDependencies": {
         "@tsconfig/recommended": "^1.0.3",
         "@typescript-eslint/eslint-plugin": "^6.7.4",

@@ -1,5 +1,5 @@
 import { DataConnection, Peer } from 'peerjs';
-import { ShareLevel, AbstractSyncClient, AbstractSyncServer, SyncOptions } from '@kele23/levelshare';
+import { ShareLevel, AbstractSyncClient, AbstractSyncServer, SyncOptions, logger } from '@kele23/levelshare';
 import { EventEmitter } from 'events';
 
 class SyncPeerClient extends AbstractSyncClient {
@@ -8,16 +8,6 @@ class SyncPeerClient extends AbstractSyncClient {
     constructor(db: ShareLevel<any>, connection: DataConnection) {
         super(db);
         this.connection = connection;
-    }
-
-    async sync(options?: SyncOptions): Promise<void> {
-        if (this.connection.open) {
-            super.sync(options);
-        } else {
-            this.connection.once('open', () => {
-                super.sync(options);
-            });
-        }
     }
 
     protected async send(data: Uint8Array): Promise<Uint8Array> {
@@ -50,71 +40,59 @@ export type PeerSyncOptions = SyncOptions & {
     peerId: string;
 };
 
-export type SyncConnection = {
-    connection: DataConnection;
-    client: SyncPeerClient;
-    server: SyncPeerServer;
-};
-
 /**
  * @emits id: The id of the current p2p interface
  */
 export class SyncP2PPeerJS extends EventEmitter {
     private peer: Peer;
     private db: ShareLevel<any>;
-    private connections: Map<string, SyncConnection>;
+    private connections: Set<string>;
 
     constructor(db: ShareLevel<any>) {
         super();
         this.db = db;
-        this.connections = new Map();
+        this.connections = new Set();
 
         // initialize peer
         this.peer = new Peer();
-        this._addPeerListeners();
+        this._init();
     }
 
     async sync(options: PeerSyncOptions) {
-        let syncConn = this.connections.get(options.peerId);
-        if (!syncConn) {
-            const newConn = this.peer.connect(options.peerId);
-            syncConn = this._makeConnection(newConn);
+        if (!this.peer.open) throw 'Peer not opened';
+        if (this.connections.has(options.peerId)) throw 'Connection to this peer already running';
+
+        try {
+            this.connections.add(options.peerId);
+            const connection = this.peer.connect(options.peerId);
+            await new Promise<void>((resolve, reject) => {
+                connection.once('open', () => {
+                    resolve();
+                });
+                connection.once('error', () => {
+                    reject();
+                });
+            });
+
+            const client = new SyncPeerClient(this.db, connection);
+            await client.sync();
+            connection.close();
+        } finally {
+            this.connections.delete(options.peerId);
         }
-
-        // sync
-        syncConn.client.sync(options);
     }
 
-    private _makeConnection(connection: DataConnection): SyncConnection {
-        const syncConn: SyncConnection = {
-            connection,
-            client: new SyncPeerClient(this.db, connection),
-            server: new SyncPeerServer(this.db, connection),
-        };
-        this.connections.set(connection.peer, syncConn);
-        connection.addListener('close', () => {
-            this.connections.delete(connection.peer);
-        });
-        return syncConn;
-    }
-
-    private _addPeerListeners() {
-        this.peer.addListener('open', () => {
+    private _init() {
+        this.peer.on('open', () => {
+            logger.log(this.peer.id);
             this.emit('id', this.peer.id);
         });
         this.peer.addListener('connection', (connection) => {
-            this._makeConnection(connection);
-        });
-        this.peer.addListener('close', () => {
-            this.connections.clear();
-        });
-
-        // ????
-        this.peer.addListener('disconnected', () => {
-            // ???? what I have to do?
-        });
-        this.peer.addListener('error', () => {
-            // ???? what I have to do?
+            this.connections.add(connection.peer);
+            const server = new SyncPeerServer(this.db, connection);
+            connection.on('close', () => {
+                this.connections.delete(connection.peer);
+            });
         });
     }
 }

@@ -1,6 +1,12 @@
 import UUID from 'pure-uuid';
-import { ShareLevel } from '../index.js';
-import { Friend } from '../interfaces/db.js';
+import {
+    OfferSyncRequest,
+    OfferSyncResponse,
+    PushSyncRequest,
+    PushSyncResponse,
+    SyncOptions,
+} from '../interfaces/sync.js';
+import { Feed, Friend } from '../interfaces/db.js';
 import { base64Encode } from '../utils/base64.js';
 import { msgDecode, msgEncode } from '../utils/msgpack.js';
 import {
@@ -11,11 +17,9 @@ import {
     PullSyncRequest,
     PullSyncResponse,
 } from '../interfaces/sync.js';
-
-export type SyncOptions = {
-    continuous: boolean;
-    iterval: number;
-};
+import { ShareLevel } from '../level/share-level.js';
+import { logger } from '../utils/logger.js';
+import { AbstractIteratorOptions } from 'abstract-level';
 
 export abstract class AbstractSyncClient {
     protected _db: ShareLevel<any>;
@@ -34,7 +38,15 @@ export abstract class AbstractSyncClient {
 
         this._syncing = true;
         const transaction = new UUID(4).format('std');
+        await this.pull(transaction);
+        await this.push(transaction);
+        this._syncing = false;
+    }
+
+    protected async pull(transaction: string) {
         const id = this._db.id;
+
+        logger.debug('>>>>> ', 'PULL');
 
         /////////////////////////////////////////////////////////// DISCOVERY
         const discoveryRequest: DiscoverySyncRequest = {
@@ -43,17 +55,22 @@ export abstract class AbstractSyncClient {
             type: 'discovery',
         };
 
-        console.debug('>>>>> ', discoveryRequest);
+        logger.debug('>>>>> ', discoveryRequest);
 
         const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this.send(msgEncode(discoveryRequest)));
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
 
-        console.debug('<<<<< ', discoveryResponse);
+        logger.debug('<<<<< ', discoveryResponse);
 
         const startSeq = discoveryResponse.startSeq;
         const endSeq = discoveryResponse.endSeq;
+
+        // exit if nothing to sync
+        if (!endSeq) {
+            return;
+        }
 
         /////////////////////////////////////////////////////////// FEED
         const feedRequest: FeedSyncRequest = {
@@ -65,101 +82,138 @@ export abstract class AbstractSyncClient {
             feedRequest['gt'] = startSeq;
         }
 
-        console.debug('>>>>> ', feedRequest);
+        logger.debug('>>>>> ', feedRequest);
 
         const feedResponse = msgDecode<FeedSyncResponse>(await this.send(msgEncode(feedRequest)));
         if (!feedResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + feedResponse.message;
         }
 
-        console.debug('<<<<< ', feedResponse);
+        logger.debug('<<<<< ', feedResponse);
 
         /////////////////////////////////////////////////////////// BATCH
-        const friendsLevel = this._db.friends;
-        const dataLevel = this._db.data;
-        const feedLevel = this._db.feed;
-        const indexLevel = this._db.index;
-        const realDb = this._db.realdb;
-
-        // 1 - add friend
-        let batch = realDb.batch();
-        const friendItem: Friend = { seq: discoveryResponse.endSeq!, lastSeen: new Date() };
-        batch = batch.put(discoveryResponse.id, friendItem, { sublevel: friendsLevel });
-        const modKeys = feedResponse.feed.map((item) => item[1].key);
-        const toFix = new Map<string, string>();
-
-        // 2 - move current feed up
-        const fUpOpt: any = { lte: endSeq };
-        if (startSeq) {
-            fUpOpt['gt'] = startSeq;
-        }
-        for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
-            const seq = this._db.getIncrementSequence();
-            const feed = value;
-            const oldKey = feed.key;
-            if (modKeys.includes(oldKey)) {
-                feed.key = oldKey + '_' + transaction;
-                toFix.set(oldKey, feed.key);
-            }
-            batch.put(seq, feed, { sublevel: feedLevel });
-        }
-
-        // 3 - fix conflicts data if presents
-        for (const [oldKey, newKey] of toFix.entries()) {
-            for await (const [dataKey, dataValue] of dataLevel.iterator({ gte: oldKey + '#', lte: oldKey + '~' })) {
-                const dataNewKey = dataKey.replace(oldKey, newKey);
-                batch.del(dataKey, { sublevel: dataLevel });
-                batch.put(dataNewKey, dataValue, { sublevel: dataLevel });
-            }
-        }
-
-        // iterate over feed result and
-        const toPullS: Set<string> = new Set();
-        for (const [key, value] of feedResponse.feed) {
-            // 4 - add feed
-            batch = batch.put(key, value, { sublevel: feedLevel });
-
-            // 5 - add data with placeholder value
-            const strKey = typeof value.key == 'string' ? value.key : base64Encode(value.key);
-            const dataKey = `${strKey}#${value.seq}`;
-            const dataValue = value.type ? `__${discoveryResponse.id}__` : '__del__';
-            batch = batch.put(dataKey, dataValue, { sublevel: dataLevel, valueEncoding: 'utf8' });
-
-            // 6 - add index  &  7 - add to download
-            if (value.type == 'put') {
-                batch = batch.put(value.key, dataKey, { sublevel: indexLevel });
-                toPullS.add(dataKey);
-            } else {
-                batch = batch.del(value.key, { sublevel: indexLevel });
-                toPullS.delete(dataKey);
-            }
-        }
-
-        batch.write();
-
-        const toPull = Array.from(toPullS.values());
+        const toPull = await this._db.importFeed({
+            transaction,
+            feed: feedResponse.feed,
+            startSeq: startSeq,
+            endSeq: endSeq,
+            otherId: discoveryResponse.id,
+        });
 
         // /////////////////////////////////////////////////////////// FETCH
+        const dataLevel = this._db.data;
+
         const pullRequest: PullSyncRequest = {
             transaction,
-            keys: Array.from(toPull.values()),
+            keys: toPull,
             type: 'pull',
         };
 
-        console.debug('>>>>> ', pullRequest);
+        logger.debug('>>>>> ', pullRequest);
 
         const pullResponse = msgDecode<PullSyncResponse>(await this.send(msgEncode(pullRequest)));
         if (!pullResponse.ok) {
             throw 'Cannot get pull due to an error: ' + pullResponse.message;
         }
 
-        console.debug('<<<<< ', pullResponse);
+        logger.debug('<<<<< ', pullResponse);
 
         for (let i = 0; i < toPull.length; i++) {
             const key = toPull[i];
             const value = pullResponse.values[i];
             await dataLevel.put(key, value, { valueEncoding: 'buffer' });
         }
-        this._syncing = false;
+    }
+
+    protected async push(transaction: string) {
+        const id = this._db.id;
+
+        logger.debug('>>>>> ', 'PUSH');
+
+        /////////////////////////////////////////////////////////// DISCOVERY
+        const discoveryRequest: DiscoverySyncRequest = {
+            transaction,
+            id,
+            type: 'discovery',
+        };
+
+        logger.debug('>>>>> ', discoveryRequest);
+
+        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this.send(msgEncode(discoveryRequest)));
+        if (!discoveryResponse.ok) {
+            throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
+        }
+
+        logger.debug('<<<<< ', discoveryResponse);
+
+        /////////////////////////////////////////////////////////// OFFER
+        const friendsLevel = this._db.friends;
+        const feedLevel = this._db.feed;
+
+        const friend = (await friendsLevel.getMany([discoveryResponse.id]))[0];
+        let startSeq: string | undefined = undefined;
+        if (friend) {
+            startSeq = friend.seq;
+        }
+
+        let endSeq: string | undefined = undefined;
+        for await (const key of feedLevel.keys({ reverse: true, limit: 1 })) {
+            endSeq = key;
+        }
+
+        // exit if nothing to sync
+        if (!endSeq) {
+            return;
+        }
+
+        const search: AbstractIteratorOptions<string, Feed> = {
+            lte: endSeq,
+        };
+        if (startSeq) {
+            search['gt'] = startSeq;
+        }
+
+        const feed: [string, Feed][] = [];
+        for await (const [key, value] of feedLevel.iterator({ ...search })) {
+            feed.push([key, value]);
+        }
+
+        const offerRequest: OfferSyncRequest = {
+            id,
+            transaction,
+            feed,
+            startSeq,
+            endSeq,
+            type: 'offer',
+        };
+
+        logger.debug('>>>>> ', offerRequest);
+
+        const offerResponse = msgDecode<OfferSyncResponse>(await this.send(msgEncode(offerRequest)));
+        if (!offerResponse.ok) {
+            throw 'Cannot get feeed due to an error: ' + offerResponse.message;
+        }
+
+        logger.debug('<<<<< ', offerResponse);
+
+        /////////////////////////////////////////////////////////// PUSH
+        const dataLevel = this._db.data;
+        const values = await dataLevel.getMany<String, Uint8Array>(offerResponse.keys, { valueEncoding: 'buffer' });
+
+        const pushRequest: PushSyncRequest = {
+            transaction,
+            values,
+            keys: offerResponse.keys,
+            type: 'push',
+        };
+
+        logger.debug('>>>>> ', pushRequest);
+
+        const pushResponse = msgDecode<PushSyncResponse>(await this.send(msgEncode(pushRequest)));
+        if (!pushResponse.ok) {
+            throw 'Cannot get push due to an error: ' + pushResponse.message;
+        }
+
+        logger.debug('<<<<< ', pushResponse);
     }
 }

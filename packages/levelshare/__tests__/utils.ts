@@ -1,13 +1,13 @@
 import { ShareLevel, AbstractSyncClient, AbstractSyncServer } from '../src/index.js';
 
 export type T = {
-    assert: (result: boolean) => void;
+    assert: (result: boolean, message?: string) => void;
 };
 
 export const test = async (name: string, fn: (t: T) => Promise<void>) => {
     const t = {
-        assert: (result: boolean) => {
-            console.log(`Test: ${name} ${result ? 'passet' : 'failed'}`);
+        assert: (result: boolean, message?: string) => {
+            console.log(`Test: ${name} ${message} : ${result ? 'PASS' : 'FAIL'}`);
         },
     };
     await fn(t);

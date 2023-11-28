@@ -2,7 +2,7 @@ import { ShareLevel } from '../src/index.js';
 import { temporaryDirectory } from 'tempy';
 import { TestSyncClient, TestSyncServer, test } from './utils.js';
 
-test('basic sync', async function (t) {
+await test('basic sync', async function (t) {
     const clientDB = new ShareLevel(temporaryDirectory());
     const serverDB = new ShareLevel(temporaryDirectory());
 
@@ -13,9 +13,17 @@ test('basic sync', async function (t) {
     const client = new TestSyncClient(clientDB, server);
 
     await client.sync();
-    const finalValue: [string, string][] = [];
+
+    // client
+    const finalValueC: [string, string][] = [];
     for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValue.push([key, value]);
+        finalValueC.push([key, value]);
+    }
+
+    // server
+    const finalValueS: [string, string][] = [];
+    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+        finalValueS.push([key, value]);
     }
 
     const checkValue = [
@@ -24,10 +32,11 @@ test('basic sync', async function (t) {
         ['C', 'C'],
         ['D', 'D'],
     ];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValue));
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
 });
 
-test('basic sync + del', async function (t) {
+await test('basic sync + del', async function (t) {
     const clientDB = new ShareLevel<string>(temporaryDirectory());
     const serverDB = new ShareLevel<string>(temporaryDirectory());
 
@@ -38,19 +47,27 @@ test('basic sync + del', async function (t) {
     const client = new TestSyncClient(clientDB, server);
 
     await client.sync();
-    const finalValue: [string, string][] = [];
+
+    const finalValueC: [string, string][] = [];
     for await (const [key, value] of clientDB.iterator()) {
-        finalValue.push([key, value]);
+        finalValueC.push([key, value]);
+    }
+
+    // server
+    const finalValueS: [string, string][] = [];
+    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+        finalValueS.push([key, value]);
     }
 
     const checkValue = [
         ['A', 'A'],
         ['D', 'D'],
     ];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValue));
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
 });
 
-test('sync with empty db', async function (t) {
+await test('sync with empty db', async function (t) {
     const clientDB = new ShareLevel(temporaryDirectory());
     const serverDB = new ShareLevel(temporaryDirectory());
 
@@ -60,16 +77,23 @@ test('sync with empty db', async function (t) {
     const client = new TestSyncClient(clientDB, server);
 
     await client.sync();
-    const finalValue: [string, string][] = [];
+    const finalValueC: [string, string][] = [];
     for await (const [key, value] of clientDB.iterator()) {
-        finalValue.push([key, value]);
+        finalValueC.push([key, value]);
+    }
+
+    // server
+    const finalValueS: [string, string][] = [];
+    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+        finalValueS.push([key, value]);
     }
 
     const checkValue = [['A', 'A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValue));
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
 });
 
-test('sync empty db', async function (t) {
+await test('sync empty db', async function (t) {
     const clientDB = new ShareLevel(temporaryDirectory());
     const serverDB = new ShareLevel(temporaryDirectory());
 
@@ -79,16 +103,23 @@ test('sync empty db', async function (t) {
     const client = new TestSyncClient(clientDB, server);
 
     await client.sync();
-    const finalValue: [string, string][] = [];
+    const finalValueC: [string, string][] = [];
     for await (const [key, value] of clientDB.iterator()) {
-        finalValue.push([key, value]);
+        finalValueC.push([key, value]);
+    }
+
+    // server
+    const finalValueS: [string, string][] = [];
+    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+        finalValueS.push([key, value]);
     }
 
     const checkValue = [['A', 'A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValue));
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
 });
 
-test('sync conflict', async function (t) {
+await test('sync conflict', async function (t) {
     const clientDB = new ShareLevel(temporaryDirectory());
     const serverDB = new ShareLevel(temporaryDirectory());
 
@@ -99,11 +130,18 @@ test('sync conflict', async function (t) {
     const client = new TestSyncClient(clientDB, server);
 
     await client.sync();
-    const finalValue: [string, string][] = [];
+    const finalValueC: [string, string][] = [];
     for await (const [key, value] of clientDB.iterator()) {
-        finalValue.push([key, value]);
+        finalValueC.push([key, value]);
+    }
+
+    // server
+    const finalValueS: [string, string][] = [];
+    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+        finalValueS.push([key, value]);
     }
 
     const checkValue = [['A', 'SV-A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValue));
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
 });

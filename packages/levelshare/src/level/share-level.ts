@@ -23,6 +23,8 @@ import UUID from 'pure-uuid';
 import { Feed, Friend } from '../interfaces/db.js';
 import { getSequence } from '../utils/sequence.js';
 import { ShareIterator } from './share-iterator.js';
+import { logger } from '../utils/logger.js';
+import { base64Encode } from '../utils/base64.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     private _id: string;
@@ -84,7 +86,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
                 this._sequence = key;
             }
         } catch (error) {
-            console.warn('Error', error);
+            logger.warn('Error', error);
         }
     }
 
@@ -282,6 +284,83 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         return new ShareIterator<V>(this, options);
     }
 
+    async importFeed({
+        transaction,
+        feed,
+        endSeq,
+        startSeq,
+        otherId,
+    }: {
+        transaction: string;
+        feed: [string, Feed][];
+        startSeq?: string;
+        endSeq: string;
+        otherId: string;
+    }): Promise<string[]> {
+        const friendsLevel = this.friends;
+        const dataLevel = this.data;
+        const feedLevel = this.feed;
+        const indexLevel = this.index;
+        const realDb = this.realdb;
+
+        // 1 - add friend
+        let batch = realDb.batch();
+        const friendItem: Friend = { seq: endSeq!, lastSeen: new Date() };
+        batch = batch.put(otherId, friendItem, { sublevel: friendsLevel });
+        const modKeys = feed.map((item) => item[1].key);
+        const toFix = new Map<string, string>();
+
+        // 2 - move current feed up
+        const fUpOpt: any = { lte: endSeq };
+        if (startSeq) {
+            fUpOpt['gt'] = startSeq;
+        }
+        for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
+            const seq = this._getIncrementSequence();
+            const feed = value;
+            const oldKey = feed.key;
+            if (modKeys.includes(oldKey)) {
+                feed.key = oldKey + '_' + transaction;
+                toFix.set(oldKey, feed.key);
+            }
+            batch.put(seq, feed, { sublevel: feedLevel });
+        }
+
+        // 3 - fix conflicts data if presents
+        for (const [oldKey, newKey] of toFix.entries()) {
+            for await (const [dataKey, dataValue] of dataLevel.iterator({ gte: oldKey + '#', lte: oldKey + '~' })) {
+                const dataNewKey = dataKey.replace(oldKey, newKey);
+                batch.del(dataKey, { sublevel: dataLevel });
+                batch.put(dataNewKey, dataValue, { sublevel: dataLevel });
+            }
+        }
+
+        // iterate over feed result and
+        const toGet: Set<string> = new Set();
+        for (const [key, value] of feed) {
+            // 4 - add feed
+            batch = batch.put(key, value, { sublevel: feedLevel });
+
+            // 5 - add data with placeholder value
+            const strKey = typeof value.key == 'string' ? value.key : base64Encode(value.key);
+            const dataKey = `${strKey}#${value.seq}`;
+            const dataValue = value.type ? `__${otherId}__` : '__del__';
+            batch = batch.put(dataKey, dataValue, { sublevel: dataLevel, valueEncoding: 'utf8' });
+
+            // 6 - add index  &  7 - add to download
+            if (value.type == 'put') {
+                batch = batch.put(value.key, dataKey, { sublevel: indexLevel });
+                toGet.add(dataKey);
+            } else {
+                batch = batch.del(value.key, { sublevel: indexLevel });
+                toGet.delete(dataKey);
+            }
+        }
+
+        batch.write();
+        return Array.from(toGet);
+    }
+
     get realdb() {
         return this._db;
     }
@@ -306,11 +385,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         return this._id;
     }
 
-    get sequence() {
-        return this._sequence;
-    }
-
-    getIncrementSequence() {
+    private _getIncrementSequence() {
         this._sequence = getSequence(this._sequence);
         return this._sequence;
     }
