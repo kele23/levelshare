@@ -17,27 +17,103 @@ import {
 import { ShareLevel } from '../level/share-level.js';
 import { logger } from '../utils/logger.js';
 import { msgDecode, msgEncode } from '../utils/msgpack.js';
+import EventEmitter from 'events';
 
-export abstract class AbstractSyncClient {
+export abstract class AbstractSyncClient extends EventEmitter {
     protected _db: ShareLevel<any>;
     protected _syncing = false;
+    protected _syncOptions: SyncOptions | null = null;
+    protected _nextSync: any;
 
     constructor(db: ShareLevel<any>) {
+        super();
         this._db = db;
+
+        // events
+        this._db.on('put', () => {
+            this._changed();
+        });
+        this._db.on('del', () => {
+            this._changed();
+        });
+        this._db.on('batch', () => {
+            this._changed();
+        });
+        this._db.on('clear', () => {
+            this._changed();
+        });
     }
 
     protected abstract send(data: Uint8Array): Promise<Uint8Array>;
 
-    async sync(_options?: SyncOptions) {
-        if (this._syncing) {
-            throw 'Another sync process is in progress';
+    protected _changed() {
+        if (!this._syncOptions?.continuous) return;
+        if (this._syncOptions.type != 'change') return;
+
+        // not run if syncing
+        if (this.syncing) {
+            return;
         }
 
+        // stop timeout
+        if (this._nextSync) {
+            clearTimeout(this._nextSync);
+        }
+
+        // run timeout
+        this._nextSync = setTimeout(() => {
+            this._doSync();
+        }, 2000);
+    }
+
+    async sync(options: SyncOptions) {
+        if (this._syncOptions) {
+            throw 'A running sync task is configured; please stop it before syncing';
+        }
+
+        this._syncOptions = options;
+
+        // if not continuos, than one shot now
+        if (!options.continuous) {
+            await this._doSync();
+            this._syncOptions = null;
+            return;
+        }
+
+        if (this._syncOptions.type != 'polling') return;
+
+        const fn = async () => {
+            await this._doSync();
+            this._nextSync = setTimeout(fn, options.pollingTime || 30 * 1000);
+        };
+        this._nextSync = setTimeout(fn, options.pollingTime || 30 * 1000);
+    }
+
+    public get syncing() {
+        return this._syncing;
+    }
+
+    public async stopSync() {
+        if (this.syncing) {
+            await new Promise<void>((resolve) => {
+                this.once('sync-completed', () => {
+                    resolve();
+                });
+            });
+        }
+
+        this._syncOptions = null;
+        if (this._nextSync) clearTimeout(this._nextSync);
+    }
+
+    protected async _doSync() {
         this._syncing = true;
+        this.emit('sync-start');
         const transaction = new UUID(4).format('std');
         await this.pull(transaction);
         await this.push(transaction);
         this._syncing = false;
+        this.emit('sync-completed');
     }
 
     protected async pull(transaction: string) {

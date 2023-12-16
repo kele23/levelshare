@@ -2,11 +2,9 @@ import {
     AbstractBatchDelOperation,
     AbstractBatchPutOperation,
     AbstractClearOptions,
-    AbstractIterator,
     AbstractIteratorOptions,
     AbstractLevel,
     AbstractSublevel,
-    AbstractSublevelOptions,
     NodeCallback,
 } from 'abstract-level';
 import {
@@ -24,7 +22,6 @@ import { Feed, Friend } from '../interfaces/db.js';
 import { getSequence } from '../utils/sequence.js';
 import { ShareIterator } from './share-iterator.js';
 import { logger } from '../utils/logger.js';
-import { base64Encode } from '../utils/base64.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     private _id: string;
@@ -63,7 +60,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         this._db = new Level<string, any>(this._location, options);
         this._meta = this._db.sublevel<string, string>('__meta', { keyEncoding: 'utf8', valueEncoding: 'json' });
         this._feed = this._db.sublevel<string, Feed>('__feed', { keyEncoding: 'utf8', valueEncoding: 'json' });
-        this._index = this._db.sublevel<string, any>('__index', {
+        this._index = this._db.sublevel<string, string>('__index', {
             valueEncoding: 'utf8',
             keyEncoding: 'utf8',
         });
@@ -342,8 +339,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
             batch = batch.put(key, value, { sublevel: feedLevel });
 
             // 5 - add data with placeholder value
-            const strKey = typeof value.key == 'string' ? value.key : base64Encode(value.key);
-            const dataKey = `${strKey}#${value.seq}`;
+            const dataKey = `${value.key}#${value.seq}`;
             const dataValue = value.type ? `__${otherId}__` : '__del__';
             batch = batch.put(dataKey, dataValue, { sublevel: dataLevel, valueEncoding: 'utf8' });
 

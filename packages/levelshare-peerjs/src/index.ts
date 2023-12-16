@@ -48,12 +48,14 @@ export class SyncP2PPeerJS extends EventEmitter {
     private db: ShareLevel<any>;
     private connections: Set<string>;
 
-    constructor(db: ShareLevel<any>) {
+    constructor(db: ShareLevel<any>, peer?: Peer) {
         super();
         this.db = db;
         this.connections = new Set();
 
         // initialize peer
+        if (peer) this.peer = peer;
+        else this.peer = new Peer();
         this.peer = new Peer();
         this._init();
     }

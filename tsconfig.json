@@ -7,6 +7,9 @@
         "skipLibCheck": true,
         "declaration": true,
         "allowSyntheticDefaultImports": true,
+        "removeComments": true,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
 
         "moduleResolution": "NodeNext",
         "resolveJsonModule": true,

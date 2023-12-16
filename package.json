@@ -6,8 +6,7 @@
     ],
     "scripts": {
         "build": "npm run tsc",
-        "tsc": "lerna run tsc",
-        "publish": "lerna run tsc & lerna publish"
+        "tsc": "lerna run tsc"
     },
     "devDependencies": {
         "@tsconfig/recommended": "^1.0.3",
