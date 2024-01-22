@@ -25,18 +25,23 @@ import { logger } from '../utils/logger.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     private _id: string;
-    private _location: string;
+    private _location?: string;
+    private _level?: Level<string, any>;
 
     private _db!: Level<string, any>;
     private _meta!: AbstractSublevel<Level<string, any>, any, string, string>;
     private _feed!: AbstractSublevel<Level<string, any>, any, string, Feed>;
     private _data!: AbstractSublevel<Level<string, any>, any, string, V>;
+    private _local!: AbstractSublevel<Level<string, any>, any, string, V>;
     private _friends!: AbstractSublevel<Level<string, any>, any, string, Friend>;
     private _index!: AbstractSublevel<Level<string, any>, any, string, string>;
     private _sequence: string;
     private _options: DatabaseOptions<string, V> | undefined;
 
-    constructor(location: string, options?: DatabaseOptions<string, V> | undefined) {
+    constructor(
+        { location, level }: { location?: string; level?: Level<string, any> },
+        options?: DatabaseOptions<string, V> | undefined,
+    ) {
         super(
             {
                 encodings: {
@@ -50,6 +55,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         );
         this._options = options;
         this._location = location;
+        this._level = level;
         this._id = new UUID(4).format('std'); // default id
         this._sequence = getSequence(); // zero
     }
@@ -57,12 +63,17 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     ////////////////////////////////// LEVEL
 
     async _init(options: OpenOptions) {
-        this._db = new Level<string, any>(this._location, options);
+        if (this._level) this._db = this._level;
+        else this._db = new Level<string, any>(this._location || 'db', options);
         this._meta = this._db.sublevel<string, string>('__meta', { keyEncoding: 'utf8', valueEncoding: 'json' });
         this._feed = this._db.sublevel<string, Feed>('__feed', { keyEncoding: 'utf8', valueEncoding: 'json' });
         this._index = this._db.sublevel<string, string>('__index', {
             valueEncoding: 'utf8',
             keyEncoding: 'utf8',
+        });
+        this._local = this._db.sublevel<string, V>('__local', {
+            keyEncoding: 'utf8',
+            valueEncoding: this._options?.valueEncoding,
         });
         this._data = this._db.sublevel<string, V>('__data', {
             keyEncoding: 'utf8',
@@ -281,6 +292,11 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         return new ShareIterator<V>(this, options);
     }
 
+    /**
+     * Import a Feed from another ShareLevel
+     * @param param0
+     * @returns A list of elements to download from the other ShareLevel
+     */
     async importFeed({
         transaction,
         feed,
@@ -294,11 +310,11 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         endSeq: string;
         otherId: string;
     }): Promise<string[]> {
-        const friendsLevel = this.friends;
-        const dataLevel = this.data;
-        const feedLevel = this.feed;
-        const indexLevel = this.index;
-        const realDb = this.realdb;
+        const friendsLevel = this._friends;
+        const dataLevel = this._data;
+        const feedLevel = this._feed;
+        const indexLevel = this._index;
+        const realDb = this._db;
 
         // 1 - add friend
         let batch = realDb.batch();
@@ -357,28 +373,53 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         return Array.from(toGet);
     }
 
+    /**
+     * The real levelDB used by ShareLevel
+     */
     get realdb() {
         return this._db;
     }
 
+    /**
+     * Index sublevel, key => intKey
+     */
     get index() {
         return this._index;
     }
 
+    /**
+     * Data sublevel, intKey => value
+     */
     get data() {
         return this._data;
     }
 
+    /**
+     * Feed sublevel [Feed] - logs of all events happened on shareLevel
+     */
     get feed() {
         return this._feed;
     }
 
+    /**
+     * level for mantaining friends feed references
+     */
     get friends() {
         return this._friends;
     }
 
+    /**
+     * Current shareLevel uniqueId
+     */
     get id() {
         return this._id;
+    }
+
+    /**
+     * Utility level for data that not need be syncronized
+     */
+    get local() {
+        return this._local;
     }
 
     private _getIncrementSequence() {

@@ -66,27 +66,34 @@ export abstract class AbstractSyncClient extends EventEmitter {
         }, 2000);
     }
 
-    async sync(options: SyncOptions) {
+    async sync(options?: SyncOptions) {
         if (this._syncOptions) {
             throw 'A running sync task is configured; please stop it before syncing';
         }
 
-        this._syncOptions = options;
+        this._syncOptions = options || { continuous: false };
 
-        // if not continuos, than one shot now
-        if (!options.continuous) {
-            await this._doSync();
+        // if not continuos, remove options and return
+        if (!this._syncOptions.continuous) {
+            await this._doSync(); // await
             this._syncOptions = null;
             return;
         }
 
-        if (this._syncOptions.type != 'polling') return;
+        // polling sync, than set timeout for next syncing
+        if (this._syncOptions.type == 'polling') {
+            const fn = async () => {
+                await this._doSync();
+                if (this._syncOptions && this._syncOptions.type == 'polling')
+                    this._nextSync = setTimeout(fn, this._syncOptions.pollingTime || 30 * 1000);
+            };
+            this._nextSync = setTimeout(fn, this._syncOptions.pollingTime || 30 * 1000);
+            return;
+        }
 
-        const fn = async () => {
-            await this._doSync();
-            this._nextSync = setTimeout(fn, options.pollingTime || 30 * 1000);
-        };
-        this._nextSync = setTimeout(fn, options.pollingTime || 30 * 1000);
+        if (this._syncOptions.type == 'change') {
+            this._doSync(); // no await
+        }
     }
 
     public get syncing() {

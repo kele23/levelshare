@@ -23,6 +23,14 @@ export async function printDB(title: string, db: ShareLevel<any>) {
     console.log(tmp);
 }
 
+export function delayPromise(duration: number) {
+    return new Promise(function (resolve) {
+        setTimeout(function () {
+            resolve(null);
+        }, duration);
+    });
+}
+
 export class TestSyncServer extends AbstractSyncServer {}
 
 export class TestSyncClient extends AbstractSyncClient {
