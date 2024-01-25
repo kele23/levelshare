@@ -1,4 +1,3 @@
-import EventEmitter from 'events';
 import UUID from 'pure-uuid';
 import { Feed } from '../interfaces/db.js';
 import {
@@ -13,23 +12,24 @@ import {
     PushSyncRequest,
     PushSyncResponse,
     Range,
+    SyncRequest,
+    SyncResponse,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
-import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
 export class SyncClient {
     protected _db: ShareLevel<any>;
     protected _syncing = false;
     protected _nextSync: any;
-    protected _transporter?: (data: string) => Promise<string>;
+    protected _transporter?: (data: SyncRequest) => Promise<SyncResponse>;
 
     constructor(db: ShareLevel<any>) {
         this._db = db;
     }
 
-    public setTransporter(fn: (data: string) => Promise<string>) {
+    public setTransporter(fn: (data: SyncRequest) => Promise<SyncResponse>) {
         this._transporter = fn;
     }
 
@@ -45,7 +45,7 @@ export class SyncClient {
         }
     }
 
-    protected async _send(data: string): Promise<string> {
+    protected async _send(data: SyncRequest): Promise<SyncResponse> {
         if (this._transporter) return await this._transporter(data);
         throw new Error('Missing transporter');
     }
@@ -64,7 +64,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this._send(msgEncode(discoveryRequest)));
+        const discoveryResponse = await this._send(discoveryRequest) as DiscoverySyncResponse;
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -91,7 +91,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', feedRequest);
 
-        const feedResponse = msgDecode<FeedSyncResponse>(await this._send(msgEncode(feedRequest)));
+        const feedResponse = await this._send(feedRequest) as FeedSyncResponse;
         if (!feedResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + feedResponse.message;
         }
@@ -118,7 +118,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', pullRequest);
 
-        const pullResponse = msgDecode<PullSyncResponse>(await this._send(msgEncode(pullRequest)));
+        const pullResponse = await this._send(pullRequest) as PullSyncResponse;
         if (!pullResponse.ok) {
             throw 'Cannot get pull due to an error: ' + pullResponse.message;
         }
@@ -147,7 +147,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this._send(msgEncode(discoveryRequest)));
+        const discoveryResponse = await this._send(discoveryRequest) as DiscoverySyncResponse;
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -197,7 +197,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', offerRequest);
 
-        const offerResponse = msgDecode<OfferSyncResponse>(await this._send(msgEncode(offerRequest)));
+        const offerResponse = await this._send(offerRequest) as OfferSyncResponse;
         if (!offerResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + offerResponse.message;
         }
@@ -217,7 +217,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', pushRequest);
 
-        const pushResponse = msgDecode<PushSyncResponse>(await this._send(msgEncode(pushRequest)));
+        const pushResponse = await this._send(pushRequest) as PushSyncResponse;
         if (!pushResponse.ok) {
             throw 'Cannot get push due to an error: ' + pushResponse.message;
         }

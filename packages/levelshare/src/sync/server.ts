@@ -16,7 +16,6 @@ import {
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
-import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
 export class SyncServer {
     protected _db: ShareLevel<any>;
@@ -25,9 +24,7 @@ export class SyncServer {
         this._db = db;
     }
 
-    public async receive(data: string): Promise<string> {
-        const request = msgDecode<SyncRequest>(data);
-
+    public async receive(request: SyncRequest): Promise<SyncResponse> {
         let response: SyncResponse;
         try {
             switch (request.type) {
@@ -72,7 +69,7 @@ export class SyncServer {
         }
 
         return new Promise((resolve) => {
-            this._db.nextTick(() => resolve(msgEncode(response)));
+            this._db.nextTick(() => resolve(response));
         });
     }
 

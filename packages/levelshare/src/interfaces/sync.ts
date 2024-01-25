@@ -9,9 +9,12 @@ export type Range = {
     lte?: string;
 };
 
-////////////////////////////////// REQUEST
-export type SyncRequest = {
+export type Transaction = {
     transaction: string;
+}
+
+////////////////////////////////// REQUEST
+export type SyncRequest = Transaction &  {
     type: 'discovery' | 'feed' | 'pull' | 'offer' | 'push';
 };
 
@@ -38,8 +41,7 @@ export type PushSyncRequest = SyncRequest & {
 };
 
 //////////////////////////////////// RESPONSE
-export type SyncResponse = {
-    transaction: string;
+export type SyncResponse = Transaction & {
     ok: boolean;
     message?: string;
 };
