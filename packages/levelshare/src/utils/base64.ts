@@ -1,17 +1,39 @@
-export const base64Encode = function encode(uint8array: Uint8Array) {
-    var output = [];
+export interface Encoder {
+    encode(input?: string): Iterable<number>;
+}
 
-    for (var i = 0, length = uint8array.length; i < length; i++) {
-        output.push(String.fromCharCode(uint8array[i]));
-    }
+export interface Decoder {
+    decode(input?: Iterable<number> | ArrayBuffer | ArrayBufferView | null): string;
+}
 
-    return btoa(output.join(''));
-};
+export function bytesToBase64(bytes: Iterable<number>): string {
+    return btoa(String.fromCharCode(...bytes));
+}
 
-const asCharCode = function asCharCode(c: string) {
-    return c.charCodeAt(0);
-};
+export function bytesToBase64URL(bytes: Iterable<number>): string {
+    return bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
 
-export const base64Decode = function decode(chars: string) {
-    return Uint8Array.from(atob(chars), asCharCode);
-};
+export function base64ToBytes(str: string): Uint8Array {
+    return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+}
+
+export function base64URLToBytes(str: string): Uint8Array {
+    return base64ToBytes(str.replaceAll('-', '+').replaceAll('_', '/'));
+}
+
+export function base64encode(str: string, encoder: Encoder = new TextEncoder()): string {
+    return bytesToBase64(encoder.encode(str));
+}
+
+export function base64URLencode(str: string, encoder: Encoder = new TextEncoder()): string {
+    return bytesToBase64URL(encoder.encode(str));
+}
+
+export function base64decode(str: string, decoder: Decoder = new TextDecoder()): string {
+    return decoder.decode(base64ToBytes(str));
+}
+
+export function base64URLdecode(str: string, decoder: Decoder = new TextDecoder()): string {
+    return decoder.decode(base64URLToBytes(str));
+}

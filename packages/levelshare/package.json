@@ -45,7 +45,6 @@
         "url": "https://github.com/kele23/levelshare/issues"
     },
     "dependencies": {
-        "@msgpack/msgpack": "^3.0.0-beta2",
         "abstract-level": "^1.0.3",
         "events": "^3.3.0",
         "level": "^8.0.0",

@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import UUID from 'pure-uuid';
 import { Feed } from '../interfaces/db.js';
 import {
@@ -15,112 +16,44 @@ import {
     SyncOptions,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
+import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
 import { msgDecode, msgEncode } from '../utils/msgpack.js';
-import EventEmitter from 'events';
 
-export abstract class AbstractSyncClient extends EventEmitter {
+export class SyncClient extends EventEmitter {
     protected _db: ShareLevel<any>;
     protected _syncing = false;
     protected _syncOptions: SyncOptions | null = null;
     protected _nextSync: any;
+    protected _transporter?: (data: string) => Promise<string>;
 
     constructor(db: ShareLevel<any>) {
         super();
         this._db = db;
-
-        // events
-        this._db.on('put', () => {
-            this._changed();
-        });
-        this._db.on('del', () => {
-            this._changed();
-        });
-        this._db.on('batch', () => {
-            this._changed();
-        });
-        this._db.on('clear', () => {
-            this._changed();
-        });
     }
 
-    protected abstract send(data: Uint8Array): Promise<Uint8Array>;
-
-    protected _changed() {
-        if (!this._syncOptions?.continuous) return;
-        if (this._syncOptions.type != 'change') return;
-
-        // not run if syncing
-        if (this.syncing) {
-            return;
-        }
-
-        // stop timeout
-        if (this._nextSync) {
-            clearTimeout(this._nextSync);
-        }
-
-        // run timeout
-        this._nextSync = setTimeout(() => {
-            this._doSync();
-        }, 2000);
+    public setTransporter(fn: (data: string) => Promise<string>) {
+        this._transporter = fn;
     }
 
-    async sync(options?: SyncOptions) {
-        if (this._syncOptions) {
-            throw 'A running sync task is configured; please stop it before syncing';
-        }
-
-        this._syncOptions = options || { continuous: false };
-
-        // if not continuos, remove options and return
-        if (!this._syncOptions.continuous) {
-            await this._doSync(); // await
-            this._syncOptions = null;
-            return;
-        }
-
-        // polling sync, than set timeout for next syncing
-        if (this._syncOptions.type == 'polling') {
-            const fn = async () => {
-                await this._doSync();
-                if (this._syncOptions && this._syncOptions.type == 'polling')
-                    this._nextSync = setTimeout(fn, this._syncOptions.pollingTime || 30 * 1000);
-            };
-            this._nextSync = setTimeout(fn, this._syncOptions.pollingTime || 30 * 1000);
-            return;
-        }
-
-        if (this._syncOptions.type == 'change') {
-            this._doSync(); // no await
-        }
+    protected async _send(data: string): Promise<string> {
+        if (this._transporter) return await this._transporter(data);
+        throw new Error('Missing transporter');
     }
 
-    public get syncing() {
-        return this._syncing;
-    }
-
-    public async stopSync() {
-        if (this.syncing) {
-            await new Promise<void>((resolve) => {
-                this.once('sync-completed', () => {
-                    resolve();
-                });
-            });
+    public async sync() {
+        try {
+            this._syncing = true;
+            this.emit('sync:start');
+            const transaction = new UUID(4).format('std');
+            await this.pull(transaction);
+            await this.push(transaction);
+            this.emit('sync:completed');
+        } catch (e) {
+            this.emit('sync:failed');
+        } finally {
+            this._syncing = false;
         }
-
-        this._syncOptions = null;
-        if (this._nextSync) clearTimeout(this._nextSync);
-    }
-
-    protected async _doSync() {
-        this._syncing = true;
-        this.emit('sync-start');
-        const transaction = new UUID(4).format('std');
-        await this.pull(transaction);
-        await this.push(transaction);
-        this._syncing = false;
-        this.emit('sync-completed');
     }
 
     protected async pull(transaction: string) {
@@ -137,7 +70,7 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this.send(msgEncode(discoveryRequest)));
+        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this._send(msgEncode(discoveryRequest)));
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -164,7 +97,7 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         logger.debug('>>>>> ', feedRequest);
 
-        const feedResponse = msgDecode<FeedSyncResponse>(await this.send(msgEncode(feedRequest)));
+        const feedResponse = msgDecode<FeedSyncResponse>(await this._send(msgEncode(feedRequest)));
         if (!feedResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + feedResponse.message;
         }
@@ -173,11 +106,11 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         /////////////////////////////////////////////////////////// BATCH
         const toPull = await this._db.importFeed({
-            transaction,
             feed: feedResponse.feed,
             startSeq: startSeq,
             endSeq: endSeq,
             otherId: discoveryResponse.id,
+            direction: 'pull',
         });
 
         // /////////////////////////////////////////////////////////// FETCH
@@ -191,7 +124,7 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         logger.debug('>>>>> ', pullRequest);
 
-        const pullResponse = msgDecode<PullSyncResponse>(await this.send(msgEncode(pullRequest)));
+        const pullResponse = msgDecode<PullSyncResponse>(await this._send(msgEncode(pullRequest)));
         if (!pullResponse.ok) {
             throw 'Cannot get pull due to an error: ' + pullResponse.message;
         }
@@ -201,7 +134,8 @@ export abstract class AbstractSyncClient extends EventEmitter {
         for (let i = 0; i < toPull.length; i++) {
             const key = toPull[i];
             const value = pullResponse.values[i];
-            await dataLevel.put(key, value, { valueEncoding: 'buffer' });
+            const base64Value = base64ToBytes(value);
+            await dataLevel.put(key, base64Value, { valueEncoding: 'buffer' });
         }
     }
 
@@ -219,7 +153,7 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this.send(msgEncode(discoveryRequest)));
+        const discoveryResponse = msgDecode<DiscoverySyncResponse>(await this._send(msgEncode(discoveryRequest)));
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -269,7 +203,7 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         logger.debug('>>>>> ', offerRequest);
 
-        const offerResponse = msgDecode<OfferSyncResponse>(await this.send(msgEncode(offerRequest)));
+        const offerResponse = msgDecode<OfferSyncResponse>(await this._send(msgEncode(offerRequest)));
         if (!offerResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + offerResponse.message;
         }
@@ -282,14 +216,14 @@ export abstract class AbstractSyncClient extends EventEmitter {
 
         const pushRequest: PushSyncRequest = {
             transaction,
-            values,
+            values: values.map((item) => bytesToBase64(item)),
             keys: offerResponse.keys,
             type: 'push',
         };
 
         logger.debug('>>>>> ', pushRequest);
 
-        const pushResponse = msgDecode<PushSyncResponse>(await this.send(msgEncode(pushRequest)));
+        const pushResponse = msgDecode<PushSyncResponse>(await this._send(msgEncode(pushRequest)));
         if (!pushResponse.ok) {
             throw 'Cannot get push due to an error: ' + pushResponse.message;
         }

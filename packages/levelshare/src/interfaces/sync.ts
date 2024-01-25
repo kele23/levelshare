@@ -38,7 +38,7 @@ export type OfferSyncRequest = SyncRequest & {
 };
 
 export type PushSyncRequest = SyncRequest & {
-    values: any[];
+    values: string[]; // base64 string
     keys: string[];
 };
 
@@ -64,7 +64,7 @@ export type OfferSyncResponse = SyncResponse & {
 };
 
 export type PullSyncResponse = SyncResponse & {
-    values: any[];
+    values: string[];
 };
 
 export type PushSyncResponse = SyncResponse & {};

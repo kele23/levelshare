@@ -39,7 +39,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     private _options: DatabaseOptions<string, V> | undefined;
 
     constructor(
-        { location, level }: { location?: string; level?: Level<string, any> },
+        { location, level, id }: { location?: string; level?: Level<string, any>; id?: string },
         options?: DatabaseOptions<string, V> | undefined,
     ) {
         super(
@@ -56,7 +56,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         this._options = options;
         this._location = location;
         this._level = level;
-        this._id = new UUID(4).format('std'); // default id
+        this._id = id ? id : new UUID(4).format('std'); // default id
         this._sequence = getSequence(); // zero
     }
 
@@ -201,28 +201,19 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         options: BatchOptions<string, V>,
         callback: NodeCallback<void>,
     ) {
-        this._getOperations(operations)
-            .then((newOperations) => {
-                this._db.batch<string, any>(newOperations, options, callback);
-            })
-            .catch((error) => {
-                this.nextTick(() => {
-                    callback(error);
-                });
-            });
+        const newOperations = this._getOperations(operations);
+        this._db.batch<string, any>(newOperations, options, callback);
     }
 
-    async _getOperations(
+    _getOperations(
         operations: (
             | AbstractBatchPutOperation<Level<string, V>, string, V>
             | AbstractBatchDelOperation<Level<string, V>, string>
         )[],
-    ): Promise<
-        (
-            | AbstractBatchPutOperation<Level<string, V>, string, any>
-            | AbstractBatchDelOperation<Level<string, V>, string>
-        )[]
-    > {
+    ): (
+        | AbstractBatchPutOperation<Level<string, V>, string, any>
+        | AbstractBatchDelOperation<Level<string, V>, string>
+    )[] {
         const newOperations = [] as (
             | AbstractBatchPutOperation<Level<string, any>, string, any>
             | AbstractBatchDelOperation<Level<string, any>, string>
@@ -232,18 +223,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
             const type = operation.type;
             const key = operation.key;
 
-            this._sequence = getSequence(this._sequence);
-            let seq = getSequence();
-            try {
-                const dataIt = this._data.keys({ reverse: true, limit: 1 });
-                const key = await dataIt.next();
-                if (key) {
-                    const split = key.split('#', 2);
-                    seq = getSequence(split[1]);
-                }
-            } catch (e) {
-                // do nothing
-            }
+            const seq = this._getIncrementSequence();
 
             // add operations
             if (operation.type == 'put') {
@@ -266,7 +246,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
 
             newOperations.push({
                 type: 'put',
-                key: this._sequence,
+                key: seq,
                 value: {
                     key,
                     seq,
@@ -298,17 +278,17 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
      * @returns A list of elements to download from the other ShareLevel
      */
     async importFeed({
-        transaction,
         feed,
         endSeq,
         startSeq,
         otherId,
+        direction,
     }: {
-        transaction: string;
         feed: [string, Feed][];
         startSeq?: string;
         endSeq: string;
         otherId: string;
+        direction: 'pull' | 'push';
     }): Promise<string[]> {
         const friendsLevel = this._friends;
         const dataLevel = this._data;
@@ -321,31 +301,40 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         const friendItem: Friend = { seq: endSeq!, lastSeen: new Date() };
         batch = batch.put(otherId, friendItem, { sublevel: friendsLevel });
         const modKeys = feed.map((item) => item[1].key);
-        const toFix = new Map<string, string>();
 
-        // 2 - move current feed up
-        const fUpOpt: any = { lte: endSeq };
-        if (startSeq) {
-            fUpOpt['gt'] = startSeq;
-        }
-        for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
-            const seq = this._getIncrementSequence();
-            const feed = value;
-            const oldKey = feed.key;
-            if (modKeys.includes(oldKey)) {
-                feed.key = oldKey + '_' + transaction;
-                toFix.set(oldKey, feed.key);
+        // pull ( rebase my feed on top of remote feed )
+        // push ( put remote feed on top of my feed )
+        if (direction == 'pull') {
+            // 2 - move current feed on top of endSeq
+            const currSeq = this._sequence;
+            this._sequence = endSeq; // TODO: Calculate and set last sequence value directly 
+            
+            // 3 - move current feed up, over imported feed
+            const fUpOpt: any = { lte: currSeq };
+            if (startSeq) {
+                fUpOpt['gt'] = startSeq;
             }
-            batch.put(seq, feed, { sublevel: feedLevel });
-        }
+            for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
+                const seq = this._getIncrementSequence();
+                const feed = value;
+                const oldKey = feed.key;
 
-        // 3 - fix conflicts data if presents
-        for (const [oldKey, newKey] of toFix.entries()) {
-            for await (const [dataKey, dataValue] of dataLevel.iterator({ gte: oldKey + '#', lte: oldKey + '~' })) {
-                const dataNewKey = dataKey.replace(oldKey, newKey);
-                batch.del(dataKey, { sublevel: dataLevel });
-                batch.put(dataNewKey, dataValue, { sublevel: dataLevel });
+                if (!modKeys.includes(oldKey)) {
+                    // 3a - add feed if not in conflict
+                    batch.put(seq, feed, { sublevel: feedLevel });
+                } else {
+                    // 3b - remove data associated to feed if in conflict
+                    const dataKey = `${value.key}#${value.seq}`;
+                    batch.del(dataKey, { sublevel: dataLevel });
+                }
             }
+        } else {
+            // check status of current feed, if not expected throw error
+            if (!startSeq || this._sequence.localeCompare(startSeq) < 0) {
+                throw new Error('Cannot push on top of modified feed');
+            }
+
+            this._sequence = endSeq;
         }
 
         // iterate over feed result and
@@ -369,7 +358,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
             }
         }
 
-        batch.write();
+        await batch.write();
         return Array.from(toGet);
     }
 

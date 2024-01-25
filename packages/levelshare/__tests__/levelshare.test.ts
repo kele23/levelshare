@@ -1,186 +1,340 @@
-import { ShareLevel } from '../src/index.js';
+import { Level } from 'level';
 import { temporaryDirectory } from 'tempy';
-import { TestSyncClient, TestSyncServer, delayPromise, test } from './utils.js';
+import { ShareLevel } from '../src/index.js';
+import { delayPromise, getAllDB, printDB, test } from './utils.js';
+import { SyncServer } from '../src/sync/server.js';
+import { SyncClient } from '../src/sync/client.js';
 
-await test('basic sync', async function (t) {
-    const clientDB = new ShareLevel({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel({ location: temporaryDirectory() });
+try {
+    await test('basic sync', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
 
-    await clientDB.batch().put('A', 'A').put('B', 'B').write();
-    await serverDB.batch().put('C', 'C').put('D', 'D').write();
+        await clientDB.batch().put('A', 'A').put('B', 'B').write();
+        await serverDB.batch().put('C', 'C').put('D', 'D').write();
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    await client.sync();
+        await client.sync();
 
-    // client
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueC.push([key, value]);
-    }
+        // client
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueC.push([key, value]);
+        }
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-    const checkValue = [
-        ['A', 'A'],
-        ['B', 'B'],
-        ['C', 'C'],
-        ['D', 'D'],
-    ];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        const checkValue = [
+            ['A', 'A'],
+            ['B', 'B'],
+            ['C', 'C'],
+            ['D', 'D'],
+        ];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
 
-await test('basic sync + del', async function (t) {
-    const clientDB = new ShareLevel<string>({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel<string>({ location: temporaryDirectory() });
+    await test('basic sync - external sublevel', async function (t) {
+        const clientExtLevel = new Level(temporaryDirectory(), { keyEncoding: 'utf8' });
+        const sublevel = clientExtLevel.sublevel('client') as unknown as Level<string, any>;
+        const clientDB = new ShareLevel({ level: sublevel });
 
-    await clientDB.batch().put('A', 'A').put('B', 'B').del('B').write();
-    await serverDB.batch().put('C', 'C').put('D', 'D').del('C').write();
+        const serverExtLevel = new Level(temporaryDirectory(), { keyEncoding: 'utf8' });
+        const serverSublevel = serverExtLevel.sublevel('server') as unknown as Level<string, any>;
+        const serverDB = new ShareLevel({ level: serverSublevel });
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+        await clientDB.batch().put('A', 'A').put('B', 'B').write();
+        await serverDB.batch().put('C', 'C').put('D', 'D').write();
 
-    await client.sync();
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator()) {
-        finalValueC.push([key, value]);
-    }
+        await client.sync();
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        // client
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueC.push([key, value]);
+        }
 
-    const checkValue = [
-        ['A', 'A'],
-        ['D', 'D'],
-    ];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-await test('sync with empty db', async function (t) {
-    const clientDB = new ShareLevel({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel({ location: temporaryDirectory() });
+        const checkValue = [
+            ['A', 'A'],
+            ['B', 'B'],
+            ['C', 'C'],
+            ['D', 'D'],
+        ];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
 
-    await clientDB.batch().put('A', 'A').put('B', 'B').del('B').write();
+    await test('basic sync + del', async function (t) {
+        const clientDB = new ShareLevel<string>({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel<string>({ location: temporaryDirectory() });
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+        await clientDB.batch().put('A', 'A').put('B', 'B').del('B').write();
+        await serverDB.batch().put('C', 'C').put('D', 'D').del('C').write();
 
-    await client.sync();
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator()) {
-        finalValueC.push([key, value]);
-    }
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        await client.sync();
 
-    const checkValue = [['A', 'A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator()) {
+            finalValueC.push([key, value]);
+        }
 
-await test('sync empty db', async function (t) {
-    const clientDB = new ShareLevel({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel({ location: temporaryDirectory() });
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-    await serverDB.batch().put('A', 'A').put('B', 'B').del('B').write();
+        const checkValue = [
+            ['A', 'A'],
+            ['D', 'D'],
+        ];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+    await test('sync with empty db', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
 
-    await client.sync();
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator()) {
-        finalValueC.push([key, value]);
-    }
+        await clientDB.batch().put('A', 'A').put('B', 'B').del('B').write();
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    const checkValue = [['A', 'A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        await client.sync();
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator()) {
+            finalValueC.push([key, value]);
+        }
 
-await test('sync conflict', async function (t) {
-    const clientDB = new ShareLevel({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel({ location: temporaryDirectory() });
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-    await clientDB.batch().put('A', 'CL-A').write();
-    await serverDB.batch().put('A', 'SV-A').write();
+        const checkValue = [['A', 'A']];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+    await test('sync empty db', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
 
-    await client.sync();
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator()) {
-        finalValueC.push([key, value]);
-    }
+        await serverDB.batch().put('A', 'A').put('B', 'B').del('B').write();
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    const checkValue = [['A', 'SV-A']];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        await client.sync();
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator()) {
+            finalValueC.push([key, value]);
+        }
 
-await test('sync on change', async function (t) {
-    const clientDB = new ShareLevel({ location: temporaryDirectory() });
-    const serverDB = new ShareLevel({ location: temporaryDirectory() });
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-    await clientDB.batch().put('A', 'CL-A').write();
-    await serverDB.batch().put('A', 'SV-A').write();
+        const checkValue = [['A', 'A']];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
 
-    const server = new TestSyncServer(serverDB);
-    const client = new TestSyncClient(clientDB, server);
+    await test('sync conflict', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
 
-    await client.sync({ continuous: true, type: 'change' });
-    
+        await clientDB.batch().put('A', 'CL-A').write();
+        await serverDB.batch().put('A', 'SV-A').write();
 
-    console.log('Wait 1 seconds...');
-    await delayPromise(1000);
-    console.log('Write data [B,CL-B]');
-    await clientDB.batch().put('B', 'CL-B').write();
-    console.log('Wait 5 seconds...');
-    await delayPromise(5000);
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
 
-    const finalValueC: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator()) {
-        finalValueC.push([key, value]);
-    }
+        await client.sync();
+        const finalValueC: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator()) {
+            finalValueC.push([key, value]);
+        }
 
-    // server
-    const finalValueS: [string, string][] = [];
-    for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-        finalValueS.push([key, value]);
-    }
+        // server
+        const finalValueS: [string, string][] = [];
+        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
+            finalValueS.push([key, value]);
+        }
 
-    const checkValue = [
-        ['A', 'SV-A'],
-        ['B', 'CL-B'],
-    ];
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-    t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
-});
+        const checkValue = [['A', 'SV-A']];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+    });
+
+    await test('sync conflict x 3 - no concurrency', async function (t) {
+        const aDB = new ShareLevel({ location: temporaryDirectory() });
+        const bDB = new ShareLevel({ location: temporaryDirectory() });
+        const cDB = new ShareLevel({ location: temporaryDirectory() });
+
+        await aDB.batch().put('A', '1').put('X', 'A1').put('X', 'A2').write();
+        await bDB.batch().put('B', '2').put('X', 'B1').put('X', 'B2').put('X', 'B3').write();
+        await cDB.batch().put('C', '3').put('S', '0').write();
+
+        const server = new SyncServer(cDB);
+        const clientA = new SyncClient(aDB);
+        clientA.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+        const clientB = new SyncClient(aDB);
+        clientB.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+
+        await clientA.sync();
+        await clientB.sync();
+        await clientA.sync();
+
+        // server
+        const Value = [
+            ['A', '1'],
+            ['B', '2'],
+            ['C', '3'],
+            ['S', '0'],
+            ['X', 'A2'],
+        ];
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(aDB)), 'A OK');
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(bDB)), 'B OK');
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(cDB)), 'C OK');
+    });
+
+    await test('sync conflict x 3 - with concurrency', async function (t) {
+        const aDB = new ShareLevel({ location: temporaryDirectory(), id: 'A' });
+        const bDB = new ShareLevel({ location: temporaryDirectory(), id: 'B' });
+        const cDB = new ShareLevel({ location: temporaryDirectory(), id: 'C' });
+
+        await aDB.batch().put('A', '1').put('X', 'A1').put('X', 'A2').write();
+        await bDB.batch().put('B', '2').put('X', 'B1').put('X', 'B2').put('X', 'B3').write();
+        await cDB.batch().put('C', '3').put('S', '0').write();
+
+        const server = new SyncServer(cDB);
+        const clientA = new SyncClient(aDB);
+        clientA.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+        const clientB = new SyncClient(aDB);
+        clientB.setTransporter((data: string): Promise<string> => {
+            return new Promise((resolve) => {
+                this._db.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+
+        const aPromise = async () => {
+            await delayPromise(1);
+            await clientA.sync();
+            await delayPromise(1000);
+            await clientA.sync();
+            console.log('A promise');
+        };
+
+        const bPromise = async () => {
+            await clientB.sync();
+            await delayPromise(3000);
+            await clientB.sync();
+            console.log('B promise');
+        };
+
+        await Promise.all([aPromise(), bPromise()]);
+
+        await printDB('A', aDB.realdb);
+        await printDB('B', bDB.realdb);
+        await printDB('C', cDB.realdb);
+
+        // server
+        const Value = [
+            ['A', '1'],
+            ['B', '2'],
+            ['C', '3'],
+            ['S', '0'],
+            ['X', 'B3'],
+        ];
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(aDB)), 'A OK');
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(bDB)), 'B OK');
+        t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(cDB)), 'C OK');
+    });
+} catch (e) {
+    console.error('EXIT - test failed');
+}

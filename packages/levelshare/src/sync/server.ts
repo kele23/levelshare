@@ -14,17 +14,18 @@ import {
     SyncResponse,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
+import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
 import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
-export abstract class AbstractSyncServer {
+export class SyncServer {
     protected _db: ShareLevel<any>;
 
     constructor(db: ShareLevel<any>) {
         this._db = db;
     }
 
-    public async receive(data: Uint8Array): Promise<Uint8Array> {
+    public async receive(data: string): Promise<string> {
         const request = msgDecode<SyncRequest>(data);
 
         let response: SyncResponse;
@@ -59,11 +60,14 @@ export abstract class AbstractSyncServer {
                 }
             }
         } catch (e) {
+            let message = 'Exception occurred';
+            if (e instanceof Error) message = e.message;
+
             logger.warn('Exception occurred', e);
             response = {
                 transaction: request.transaction,
                 ok: false,
-                message: 'Exception occurred',
+                message,
             };
         }
 
@@ -111,16 +115,17 @@ export abstract class AbstractSyncServer {
     protected async _pullReceive(request: PullSyncRequest): Promise<PullSyncResponse> {
         const dataLevel = this._db.data;
         const values = await dataLevel.getMany<String, Uint8Array>(request.keys, { valueEncoding: 'buffer' });
-        return { values, ok: true, transaction: request.transaction };
+        const base64Values = values.map((item) => bytesToBase64(item));
+        return { values: base64Values, ok: true, transaction: request.transaction };
     }
 
     protected async _offerReceive(request: OfferSyncRequest): Promise<OfferSyncResponse> {
         const keys = await this._db.importFeed({
-            transaction: request.transaction,
             feed: request.feed,
             startSeq: request.startSeq,
             endSeq: request.endSeq,
             otherId: request.id,
+            direction: 'push',
         });
 
         return { keys, ok: true, transaction: request.transaction };
@@ -133,7 +138,8 @@ export abstract class AbstractSyncServer {
         for (let i = 0; i < values.length; i++) {
             const key = keys[i];
             const value = values[i];
-            await dataLevel.put(key, value, { valueEncoding: 'buffer' });
+            const base64Value = base64ToBytes(value);
+            await dataLevel.put(key, base64Value, { valueEncoding: 'buffer' });
         }
 
         return { ok: true, transaction: request.transaction };
