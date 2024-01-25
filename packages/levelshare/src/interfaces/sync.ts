@@ -1,11 +1,6 @@
 import { Feed } from './db.js';
 
 ////////////////////////////////// OPTIONS
-export type SyncOptions = {
-    continuous: boolean;
-    type?: 'polling' | 'change';
-    pollingTime?: number;
-};
 
 export type Range = {
     gt?: string;

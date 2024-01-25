@@ -17,7 +17,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -63,7 +63,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -104,7 +104,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -141,7 +141,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -174,7 +174,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -208,7 +208,7 @@ try {
         const client = new SyncClient(clientDB);
         client.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -244,7 +244,7 @@ try {
         const clientA = new SyncClient(aDB);
         clientA.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                aDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -252,7 +252,7 @@ try {
         const clientB = new SyncClient(aDB);
         clientB.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                bDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -288,7 +288,7 @@ try {
         const clientA = new SyncClient(aDB);
         clientA.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                aDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
@@ -296,7 +296,7 @@ try {
         const clientB = new SyncClient(aDB);
         clientB.setTransporter((data: string): Promise<string> => {
             return new Promise((resolve) => {
-                this._db.nextTick(async () => {
+                bDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });

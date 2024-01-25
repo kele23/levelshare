@@ -13,22 +13,19 @@ import {
     PushSyncRequest,
     PushSyncResponse,
     Range,
-    SyncOptions,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
 import { msgDecode, msgEncode } from '../utils/msgpack.js';
 
-export class SyncClient extends EventEmitter {
+export class SyncClient {
     protected _db: ShareLevel<any>;
     protected _syncing = false;
-    protected _syncOptions: SyncOptions | null = null;
     protected _nextSync: any;
     protected _transporter?: (data: string) => Promise<string>;
 
     constructor(db: ShareLevel<any>) {
-        super();
         this._db = db;
     }
 
@@ -36,27 +33,24 @@ export class SyncClient extends EventEmitter {
         this._transporter = fn;
     }
 
+    public async sync() {
+        if (this._syncing) throw new Error('Sync in progress... retry later');
+        try {
+            this._syncing = true;
+            const transaction = new UUID(4).format('std');
+            await this._pull(transaction);
+            await this._push(transaction);
+        } finally {
+            this._syncing = false; // remember to stop syncing also on errors
+        }
+    }
+
     protected async _send(data: string): Promise<string> {
         if (this._transporter) return await this._transporter(data);
         throw new Error('Missing transporter');
     }
 
-    public async sync() {
-        try {
-            this._syncing = true;
-            this.emit('sync:start');
-            const transaction = new UUID(4).format('std');
-            await this.pull(transaction);
-            await this.push(transaction);
-            this.emit('sync:completed');
-        } catch (e) {
-            this.emit('sync:failed');
-        } finally {
-            this._syncing = false;
-        }
-    }
-
-    protected async pull(transaction: string) {
+    protected async _pull(transaction: string) {
         const id = this._db.id;
 
         logger.debug('>>>>> ', 'PULL');
@@ -139,7 +133,7 @@ export class SyncClient extends EventEmitter {
         }
     }
 
-    protected async push(transaction: string) {
+    protected async _push(transaction: string) {
         const id = this._db.id;
 
         logger.debug('>>>>> ', 'PUSH');
