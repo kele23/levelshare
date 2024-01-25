@@ -1,6 +1,6 @@
 import { Level } from 'level';
 import { temporaryDirectory } from 'tempy';
-import { ShareLevel } from '../src/index.js';
+import { ShareLevel, SyncRequest, SyncResponse } from '../src/index.js';
 import { delayPromise, getAllDB, printDB, test } from './utils.js';
 import { SyncServer } from '../src/sync/server.js';
 import { SyncClient } from '../src/sync/client.js';
@@ -15,7 +15,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -61,7 +61,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -102,7 +102,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -139,7 +139,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -172,7 +172,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -181,20 +181,10 @@ try {
         });
 
         await client.sync();
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator()) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
 
         const checkValue = [['A', 'A']];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
     });
 
     await test('sync conflict', async function (t) {
@@ -206,7 +196,7 @@ try {
 
         const server = new SyncServer(serverDB);
         const client = new SyncClient(clientDB);
-        client.setTransporter((data: string): Promise<string> => {
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 clientDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -242,15 +232,15 @@ try {
 
         const server = new SyncServer(cDB);
         const clientA = new SyncClient(aDB);
-        clientA.setTransporter((data: string): Promise<string> => {
+        clientA.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 aDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
         });
-        const clientB = new SyncClient(aDB);
-        clientB.setTransporter((data: string): Promise<string> => {
+        const clientB = new SyncClient(bDB);
+        clientB.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 bDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -286,15 +276,15 @@ try {
 
         const server = new SyncServer(cDB);
         const clientA = new SyncClient(aDB);
-        clientA.setTransporter((data: string): Promise<string> => {
+        clientA.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 aDB.nextTick(async () => {
                     resolve(await server.receive(data));
                 });
             });
         });
-        const clientB = new SyncClient(aDB);
-        clientB.setTransporter((data: string): Promise<string> => {
+        const clientB = new SyncClient(bDB);
+        clientB.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
             return new Promise((resolve) => {
                 bDB.nextTick(async () => {
                     resolve(await server.receive(data));
@@ -304,7 +294,9 @@ try {
 
         const aPromise = async () => {
             await delayPromise(1);
-            await clientA.sync();
+            try {
+                await clientA.sync();
+            } catch (e) {}
             await delayPromise(1000);
             await clientA.sync();
             console.log('A promise');

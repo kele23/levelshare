@@ -329,8 +329,9 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
                 }
             }
         } else {
+            const tmpStart = startSeq ?? getSequence();
             // check status of current feed, if not expected throw error
-            if (!startSeq || this._sequence.localeCompare(startSeq) < 0) {
+            if (this._sequence.localeCompare(tmpStart) < 0) {
                 throw new Error('Cannot push on top of modified feed');
             }
 

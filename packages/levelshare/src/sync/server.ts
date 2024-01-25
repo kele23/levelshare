@@ -60,7 +60,6 @@ export class SyncServer {
             let message = 'Exception occurred';
             if (e instanceof Error) message = e.message;
 
-            logger.warn('Exception occurred', e);
             response = {
                 transaction: request.transaction,
                 ok: false,
