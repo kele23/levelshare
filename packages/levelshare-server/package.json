@@ -1,0 +1,70 @@
+{
+    "name": "@kele23/levelshare-server",
+    "version": "0.2.5",
+    "description": "Server side sync system for leveldb",
+    "type": "module",
+    "private": true,
+    "keywords": [
+        "leveldb",
+        "sync",
+        "nodejs",
+        "js",
+        "browser",
+        "node",
+        "indexeddb",
+        "fastify"
+    ],
+    "author": "Michele Scala <scala233@gmail.com>",
+    "homepage": "https://github.com/kele23/levelshare#readme",
+    "license": "MIT",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "directories": {
+        "dist": "dist",
+        "src": "src"
+    },
+    "files": [
+        "dist",
+        "src"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/kele23/levelshare.git"
+    },
+    "scripts": {
+        "tsc": "tsc",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "start-ts": "ts-node --esm src/index.ts",
+        "generate-keys": "mkdir https && mkcert -install -cert-file ./https/fastify.cert -key-file ./https/fastify.key localhost"
+    },
+    "devDependencies": {
+        "@types/bcrypt": "^5.0.2",
+        "@types/events": "^3.0.1",
+        "tempy": "^3.1.0"
+    },
+    "bugs": {
+        "url": "https://github.com/kele23/levelshare/issues"
+    },
+    "dependencies": {
+        "@fastify/auth": "^4.4.0",
+        "@fastify/cookie": "^9.3.1",
+        "@fastify/cors": "^8.5.0",
+        "@fastify/jwt": "^8.0.0",
+        "@fastify/swagger": "^8.14.0",
+        "@fastify/swagger-ui": "^2.1.0",
+        "@fastify/type-provider-typebox": "^4.0.0",
+        "@kele23/levelshare": "^0.2.5",
+        "@sinclair/typebox": "^0.32.12",
+        "abstract-level": "^1.0.3",
+        "bcrypt": "^5.1.1",
+        "dotenv": "^16.4.1",
+        "fastify": "^4.25.2",
+        "fastify-plugin": "^4.5.1",
+        "level": "^8.0.0",
+        "nanoid": "^5.0.4"
+    }
+}

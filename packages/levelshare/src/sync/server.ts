@@ -15,7 +15,6 @@ import {
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
-import { logger } from '../utils/logger.js';
 
 export class SyncServer {
     protected _db: ShareLevel<any>;
