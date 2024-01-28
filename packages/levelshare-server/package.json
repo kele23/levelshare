@@ -1,6 +1,6 @@
 {
     "name": "@kele23/levelshare-server",
-    "version": "0.2.5",
+    "version": "0.2.7",
     "description": "Server side sync system for leveldb",
     "type": "module",
     "private": true,
@@ -57,7 +57,7 @@
         "@fastify/swagger": "^8.14.0",
         "@fastify/swagger-ui": "^2.1.0",
         "@fastify/type-provider-typebox": "^4.0.0",
-        "@kele23/levelshare": "^0.2.5",
+        "@kele23/levelshare": "^0.2.7",
         "@sinclair/typebox": "^0.32.12",
         "abstract-level": "^1.0.3",
         "bcrypt": "^5.1.1",
