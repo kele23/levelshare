@@ -7,7 +7,6 @@
     "scripts": {
         "build": "npm run tsc",
         "tsc": "lerna run tsc",
-        "version": "lerna version",
         "publish": "lerna publish --no-private"
     },
     "devDependencies": {
