@@ -1,4 +1,4 @@
-import { Feed } from '../interfaces/db.js';
+import { Feed, FeedImportResult } from '../type.js';
 import {
     DiscoverySyncRequest,
     DiscoverySyncResponse,
@@ -15,12 +15,19 @@ import {
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
+import { emitSync, importFeed } from './utils.js';
 
 export class SyncServer {
-    protected _db: ShareLevel<any>;
+    private _db: ShareLevel<any>;
+    private _transactionMap: Map<string, FeedImportResult>;
 
     constructor(db: ShareLevel<any>) {
         this._db = db;
+        this._transactionMap = new Map();
+    }
+
+    get db() {
+        return this._db;
     }
 
     public async receive(request: SyncRequest): Promise<SyncResponse> {
@@ -115,7 +122,8 @@ export class SyncServer {
     }
 
     protected async _offerReceive(request: OfferSyncRequest): Promise<OfferSyncResponse> {
-        const keys = await this._db.importFeed({
+        const result = await importFeed({
+            shareLevel: this.db,
             feed: request.feed,
             startSeq: request.startSeq,
             endSeq: request.endSeq,
@@ -123,10 +131,22 @@ export class SyncServer {
             direction: 'push',
         });
 
-        return { keys, ok: true, transaction: request.transaction };
+        // save to transaction map and start timeout to clear the map if not writte
+        this._transactionMap.set(request.transaction, result);
+        setTimeout(() => {
+            const result = this._transactionMap.get(request.transaction);
+            if (!result) return;
+            this._transactionMap.delete(request.transaction);
+            result.batch.close();
+        }, 30000);
+
+        return { keys: result.toGet, ok: true, transaction: request.transaction };
     }
 
     protected async _pushReceive(request: PushSyncRequest): Promise<PushSyncResponse> {
+        const result = this._transactionMap.get(request.transaction);
+        if (!result) throw new Error('Transaction expired');
+
         const dataLevel = this._db.data;
         const keys = request.keys;
         const values = request.values;
@@ -134,9 +154,14 @@ export class SyncServer {
             const key = keys[i];
             const value = values[i];
             const base64Value = base64ToBytes(value);
-            await dataLevel.put(key, base64Value, { valueEncoding: 'buffer' });
+            result.batch.put(key, base64Value, { valueEncoding: 'buffer', sublevel: dataLevel });
         }
 
+        await result.batch.write();
+        this._transactionMap.delete(request.transaction);
+
+        // emit local sync
+        emitSync({ shareLevel: this._db, from: result.from, to: result.to });
         return { ok: true, transaction: request.transaction };
     }
 }

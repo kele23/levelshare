@@ -18,10 +18,10 @@ import {
     PutOptions,
 } from 'level';
 import UUID from 'pure-uuid';
-import { Feed, Friend } from '../interfaces/db.js';
+import { Feed, FeedImportResult, Friend } from '../type.js';
+import { logger } from '../utils/logger.js';
 import { getSequence } from '../utils/sequence.js';
 import { ShareIterator } from './share-iterator.js';
-import { logger } from '../utils/logger.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     private _id: string;
@@ -223,7 +223,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
             const type = operation.type;
             const key = operation.key;
 
-            const seq = this._getIncrementSequence();
+            const seq = this.getIncrementSequence();
 
             // add operations
             if (operation.type == 'put') {
@@ -270,97 +270,6 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
 
     _iterator(options: AbstractIteratorOptions<string, V>) {
         return new ShareIterator<V>(this, options);
-    }
-
-    /**
-     * Import a Feed from another ShareLevel
-     * @param param0
-     * @returns A list of elements to download from the other ShareLevel
-     */
-    async importFeed({
-        feed,
-        endSeq,
-        startSeq,
-        otherId,
-        direction,
-    }: {
-        feed: [string, Feed][];
-        startSeq?: string;
-        endSeq: string;
-        otherId: string;
-        direction: 'pull' | 'push';
-    }): Promise<string[]> {
-        const friendsLevel = this._friends;
-        const dataLevel = this._data;
-        const feedLevel = this._feed;
-        const indexLevel = this._index;
-        const realDb = this._db;
-
-        // 1 - add friend
-        let batch = realDb.batch();
-        const friendItem: Friend = { seq: endSeq!, lastSeen: new Date() };
-        batch = batch.put(otherId, friendItem, { sublevel: friendsLevel });
-        const modKeys = feed.map((item) => item[1].key);
-
-        // pull ( rebase my feed on top of remote feed )
-        // push ( put remote feed on top of my feed )
-        if (direction == 'pull') {
-            // 2 - move current feed on top of endSeq
-            const currSeq = this._sequence;
-            this._sequence = endSeq; // TODO: Calculate and set last sequence value directly 
-            
-            // 3 - move current feed up, over imported feed
-            const fUpOpt: any = { lte: currSeq };
-            if (startSeq) {
-                fUpOpt['gt'] = startSeq;
-            }
-            for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
-                const seq = this._getIncrementSequence();
-                const feed = value;
-                const oldKey = feed.key;
-
-                if (!modKeys.includes(oldKey)) {
-                    // 3a - add feed if not in conflict
-                    batch.put(seq, feed, { sublevel: feedLevel });
-                } else {
-                    // 3b - remove data associated to feed if in conflict
-                    const dataKey = `${value.key}#${value.seq}`;
-                    batch.del(dataKey, { sublevel: dataLevel });
-                }
-            }
-        } else {
-            const tmpStart = startSeq ?? getSequence();
-            // check status of current feed, if not expected throw error
-            if (this._sequence.localeCompare(tmpStart) < 0) {
-                throw new Error('Cannot push on top of modified feed');
-            }
-
-            this._sequence = endSeq;
-        }
-
-        // iterate over feed result and
-        const toGet: Set<string> = new Set();
-        for (const [key, value] of feed) {
-            // 4 - add feed
-            batch = batch.put(key, value, { sublevel: feedLevel });
-
-            // 5 - add data with placeholder value
-            const dataKey = `${value.key}#${value.seq}`;
-            const dataValue = value.type ? `__${otherId}__` : '__del__';
-            batch = batch.put(dataKey, dataValue, { sublevel: dataLevel, valueEncoding: 'utf8' });
-
-            // 6 - add index  &  7 - add to download
-            if (value.type == 'put') {
-                batch = batch.put(value.key, dataKey, { sublevel: indexLevel });
-                toGet.add(dataKey);
-            } else {
-                batch = batch.del(value.key, { sublevel: indexLevel });
-                toGet.delete(dataKey);
-            }
-        }
-
-        await batch.write();
-        return Array.from(toGet);
     }
 
     /**
@@ -412,7 +321,25 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         return this._local;
     }
 
-    private _getIncrementSequence() {
+    /**
+     * Get the current sequence
+     */
+    get sequence() {
+        return this._sequence;
+    }
+
+    /**
+     * Set the current sequence
+     */
+    set sequence(seq: string) {
+        this._sequence = seq;
+    }
+
+    /**
+     * Increment and return the sequence
+     * @returns The sequence
+     */
+    public getIncrementSequence() {
         this._sequence = getSequence(this._sequence);
         return this._sequence;
     }

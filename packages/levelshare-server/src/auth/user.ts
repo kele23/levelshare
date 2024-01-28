@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import { FastifyInstance } from 'fastify';
 import { Level } from 'level';
 import { nanoid } from 'nanoid';
-import { User } from './type.js';
+import { User, UserTokenPayload } from './type.js';
 
 export const ADMIN_USER = 'admin';
 export const ADMINISTRATOR_ROLE = 'administrator';
@@ -68,4 +68,12 @@ export const checkInitUsers = async (fastify: FastifyInstance, userDb: Level<str
         );
         fastify.log.warn(`Created admin user with password ${password}`);
     }
+};
+
+export const verifyPermission = (dbName: string, user: UserTokenPayload) => {
+    let permit = false;
+    if (dbName == user.username) permit = true;
+    if (user.roles.includes(dbName)) permit = true;
+    if (user.roles.includes(ADMINISTRATOR_ROLE)) permit = true;
+    return permit;
 };

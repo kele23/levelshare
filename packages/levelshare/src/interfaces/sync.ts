@@ -1,4 +1,4 @@
-import { Feed } from './db.js';
+import { Feed } from '../type.js';
 
 ////////////////////////////////// OPTIONS
 

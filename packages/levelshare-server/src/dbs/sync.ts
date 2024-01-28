@@ -3,7 +3,7 @@ import { Level } from 'level';
 
 const syncrers = new Map<string, SyncServer>();
 
-export const getShareLevel = async (name: string, db: Level<string, any>): Promise<SyncServer> => {
+export const getSyncServer = async (name: string, db: Level<string, any>): Promise<SyncServer> => {
     let server = syncrers.get(name);
     if (server) {
         await Promise.resolve();

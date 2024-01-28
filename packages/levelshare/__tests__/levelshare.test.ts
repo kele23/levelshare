@@ -47,6 +47,42 @@ try {
         t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
     });
 
+    await test('basic sync - events', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
+
+        await clientDB.batch().put('A', 'A').put('B', 'B').write();
+        await serverDB.batch().put('C', 'C').put('D', 'D').write();
+
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
+            return new Promise((resolve) => {
+                clientDB.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+
+        server.db.on("db:sync", () => {
+            
+        })
+
+        await client.sync();
+
+        
+
+        const checkValue = [
+            ['A', 'A'],
+            ['B', 'B'],
+            ['C', 'C'],
+            ['D', 'D'],
+        ];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'event');
+    });
+
     await test('basic sync - external sublevel', async function (t) {
         const clientExtLevel = new Level(temporaryDirectory(), { keyEncoding: 'utf8' });
         const sublevel = clientExtLevel.sublevel('client') as unknown as Level<string, any>;

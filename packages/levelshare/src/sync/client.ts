@@ -1,5 +1,5 @@
 import UUID from 'pure-uuid';
-import { Feed } from '../interfaces/db.js';
+import { Feed } from '../type.js';
 import {
     DiscoverySyncRequest,
     DiscoverySyncResponse,
@@ -18,6 +18,7 @@ import {
 import { ShareLevel } from '../level/share-level.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
+import { emitSync, importFeed } from './utils.js';
 
 export class SyncClient {
     protected _db: ShareLevel<any>;
@@ -27,6 +28,10 @@ export class SyncClient {
 
     constructor(db: ShareLevel<any>) {
         this._db = db;
+    }
+
+    get db() {
+        return this._db;
     }
 
     public setTransporter(fn: (data: SyncRequest) => Promise<SyncResponse>) {
@@ -64,7 +69,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = await this._send(discoveryRequest) as DiscoverySyncResponse;
+        const discoveryResponse = (await this._send(discoveryRequest)) as DiscoverySyncResponse;
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -91,7 +96,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', feedRequest);
 
-        const feedResponse = await this._send(feedRequest) as FeedSyncResponse;
+        const feedResponse = (await this._send(feedRequest)) as FeedSyncResponse;
         if (!feedResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + feedResponse.message;
         }
@@ -99,7 +104,8 @@ export class SyncClient {
         logger.debug('<<<<< ', feedResponse);
 
         /////////////////////////////////////////////////////////// BATCH
-        const toPull = await this._db.importFeed({
+        const { toGet, batch, from, to } = await importFeed({
+            shareLevel: this.db,
             feed: feedResponse.feed,
             startSeq: startSeq,
             endSeq: endSeq,
@@ -112,25 +118,30 @@ export class SyncClient {
 
         const pullRequest: PullSyncRequest = {
             transaction,
-            keys: toPull,
+            keys: toGet,
             type: 'pull',
         };
 
         logger.debug('>>>>> ', pullRequest);
 
-        const pullResponse = await this._send(pullRequest) as PullSyncResponse;
+        const pullResponse = (await this._send(pullRequest)) as PullSyncResponse;
         if (!pullResponse.ok) {
             throw 'Cannot get pull due to an error: ' + pullResponse.message;
         }
 
         logger.debug('<<<<< ', pullResponse);
 
-        for (let i = 0; i < toPull.length; i++) {
-            const key = toPull[i];
+        for (let i = 0; i < toGet.length; i++) {
+            const key = toGet[i];
             const value = pullResponse.values[i];
             const base64Value = base64ToBytes(value);
-            await dataLevel.put(key, base64Value, { valueEncoding: 'buffer' });
+            batch.put(key, base64Value, { valueEncoding: 'buffer', sublevel: dataLevel });
         }
+
+        await batch.write();
+
+        // emit local sync
+        emitSync({ shareLevel: this._db, from, to });
     }
 
     protected async _push(transaction: string) {
@@ -147,7 +158,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', discoveryRequest);
 
-        const discoveryResponse = await this._send(discoveryRequest) as DiscoverySyncResponse;
+        const discoveryResponse = (await this._send(discoveryRequest)) as DiscoverySyncResponse;
         if (!discoveryResponse.ok) {
             throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
         }
@@ -197,7 +208,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', offerRequest);
 
-        const offerResponse = await this._send(offerRequest) as OfferSyncResponse;
+        const offerResponse = (await this._send(offerRequest)) as OfferSyncResponse;
         if (!offerResponse.ok) {
             throw 'Cannot get feeed due to an error: ' + offerResponse.message;
         }
@@ -217,7 +228,7 @@ export class SyncClient {
 
         logger.debug('>>>>> ', pushRequest);
 
-        const pushResponse = await this._send(pushRequest) as PushSyncResponse;
+        const pushResponse = (await this._send(pushRequest)) as PushSyncResponse;
         if (!pushResponse.ok) {
             throw 'Cannot get push due to an error: ' + pushResponse.message;
         }
