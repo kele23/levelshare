@@ -1,5 +1,4 @@
 import UUID from 'pure-uuid';
-import { Feed } from '../type.js';
 import {
     DiscoverySyncRequest,
     DiscoverySyncResponse,
@@ -16,6 +15,7 @@ import {
     SyncResponse,
 } from '../interfaces/sync.js';
 import { ShareLevel } from '../level/share-level.js';
+import { Feed } from '../type.js';
 import { base64ToBytes, bytesToBase64 } from '../utils/base64.js';
 import { logger } from '../utils/logger.js';
 import { emitSync, importFeed } from './utils.js';
@@ -75,8 +75,6 @@ export class SyncClient {
             throw new Error('Cannot discovery due to an error: ' + discoveryResponse.message);
         }
 
-        
-
         const startSeq = discoveryResponse.startSeq;
         const endSeq = discoveryResponse.endSeq;
 
@@ -102,10 +100,9 @@ export class SyncClient {
         if (!feedResponse.ok) {
             throw new Error('Cannot get feeed due to an error: ' + feedResponse.message);
         }
-    
 
         /////////////////////////////////////////////////////////// BATCH
-        const { toGet, batch, from, to } = await importFeed({
+        const { toGet, from, to } = await importFeed({
             shareLevel: this.db,
             feed: feedResponse.feed,
             startSeq: startSeq,
@@ -131,13 +128,13 @@ export class SyncClient {
             throw new Error('Cannot get pull due to an error: ' + pullResponse.message);
         }
 
-      
-
+        // write data
+        const batch = dataLevel.batch();
         for (let i = 0; i < toGet.length; i++) {
             const key = toGet[i];
             const value = pullResponse.values[i];
             const base64Value = base64ToBytes(value);
-            batch.put(key, base64Value, { valueEncoding: 'buffer', sublevel: dataLevel });
+            batch.put(key, base64Value, { valueEncoding: 'buffer' });
         }
 
         await batch.write();
@@ -233,7 +230,5 @@ export class SyncClient {
         if (!pushResponse.ok) {
             throw 'Cannot get push due to an error: ' + pushResponse.message;
         }
-
-       
     }
 }

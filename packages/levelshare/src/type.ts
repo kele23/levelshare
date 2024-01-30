@@ -1,4 +1,3 @@
-import { ChainedBatch, Level } from 'level';
 
 export type Operation = 'put' | 'del';
 
@@ -15,7 +14,6 @@ export interface Friend {
 
 export type FeedImportResult = {
     toGet: string[];
-    batch: ChainedBatch<Level<string, any>, string, any>;
     from: string;
     to: string;
-}
+};

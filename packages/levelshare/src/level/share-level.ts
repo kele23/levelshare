@@ -18,25 +18,24 @@ import {
     PutOptions,
 } from 'level';
 import UUID from 'pure-uuid';
-import { Feed, FeedImportResult, Friend } from '../type.js';
+import { Feed, Friend } from '../type.js';
 import { logger } from '../utils/logger.js';
 import { nextSequence } from '../utils/sequence.js';
 import { ShareIterator } from './share-iterator.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
-    private _id: string;
-    private _location?: string;
-    private _level?: Level<string, any>;
+    protected _id: string;
+    protected _location?: string;
+    protected _level?: Level<string, any>;
 
-    private _db!: Level<string, any>;
-    private _meta!: AbstractSublevel<Level<string, any>, any, string, string>;
-    private _feed!: AbstractSublevel<Level<string, any>, any, string, Feed>;
-    private _data!: AbstractSublevel<Level<string, any>, any, string, V>;
-    private _local!: AbstractSublevel<Level<string, any>, any, string, V>;
-    private _friends!: AbstractSublevel<Level<string, any>, any, string, Friend>;
-    private _index!: AbstractSublevel<Level<string, any>, any, string, string>;
-    private _sequence: string;
-    private _options: DatabaseOptions<string, V> | undefined;
+    protected _db!: Level<string, any>;
+    protected _feed!: AbstractSublevel<Level<string, any>, any, string, Feed>;
+    protected _data!: AbstractSublevel<Level<string, any>, any, string, V>;
+    protected _friends!: AbstractSublevel<Level<string, any>, any, string, Friend>;
+    protected _local!: AbstractSublevel<Level<string, any>, any, string, V>;
+    protected _index!: AbstractSublevel<Level<string, any>, any, string, string>;
+    protected _sequence: string;
+    protected _options: DatabaseOptions<string, V> | undefined;
 
     constructor(
         { location, level, id }: { location?: string; level?: Level<string, any>; id?: string },
@@ -65,7 +64,6 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     async _init(options: OpenOptions) {
         if (this._level) this._db = this._level;
         else this._db = new Level<string, any>(this._location || 'db', options);
-        this._meta = this._db.sublevel<string, string>('__meta', { keyEncoding: 'utf8', valueEncoding: 'json' });
         this._feed = this._db.sublevel<string, Feed>('__feed', { keyEncoding: 'utf8', valueEncoding: 'json' });
         this._index = this._db.sublevel<string, string>('__index', {
             valueEncoding: 'utf8',
@@ -83,9 +81,9 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
 
         // load meta
         try {
-            this._id = await this._meta.get('__id');
+            this._id = await this._db.get('__id');
         } catch (error) {
-            await this._meta.put('__id', this._id); // save id on db
+            await this._db.put('__id', this._id); // save id on db
         }
 
         // load starting sequence
@@ -222,8 +220,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         for (const operation of operations) {
             const type = operation.type;
             const key = operation.key;
-
-            const seq = this.getIncrementSequence();
+            const seq = this._sequence;
 
             // add operations
             if (operation.type == 'put') {
@@ -263,6 +260,9 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
                 valueEncoding: operation.type == 'put' ? operation.valueEncoding : 'utf8',
                 sublevel: this._data,
             });
+
+            // next
+            this._sequence = nextSequence(this._sequence);
         }
 
         return newOperations;
@@ -273,75 +273,82 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
     }
 
     /**
-     * The real levelDB used by ShareLevel
+     * @returns The current sequence
      */
-    get realdb() {
-        return this._db;
-    }
-
-    /**
-     * Index sublevel, key => intKey
-     */
-    get index() {
-        return this._index;
-    }
-
-    /**
-     * Data sublevel, intKey => value
-     */
-    get data() {
-        return this._data;
-    }
-
-    /**
-     * Feed sublevel [Feed] - logs of all events happened on shareLevel
-     */
-    get feed() {
-        return this._feed;
-    }
-
-    /**
-     * level for mantaining friends feed references
-     */
-    get friends() {
-        return this._friends;
-    }
-
-    /**
-     * Current shareLevel uniqueId
-     */
-    get id() {
-        return this._id;
-    }
-
-    /**
-     * Utility level for data that not need be syncronized
-     */
-    get local() {
-        return this._local;
-    }
-
-    /**
-     * Get the current sequence
-     */
-    get sequence() {
+    async getSequence() {
+        if (this.status === 'opening') {
+            await new Promise((resolve) => this.defer(() => resolve));
+        }
         return this._sequence;
     }
 
     /**
-     * Set the current sequence
+     * @returns The current sequence
      */
-    set sequence(seq: string) {
-        this._sequence = seq;
+    async getId() {
+        if (this.status === 'opening') {
+            await new Promise((resolve) => this.defer(() => resolve));
+        }
+        return this._id;
     }
 
     /**
-     * Increment and return the sequence
-     * @returns The sequence
+     * @returns A Local level that is not syncronized
      */
-    public getIncrementSequence() {
-        const seq = this._sequence;
-        this._sequence = nextSequence(this._sequence);
-        return seq;
+    async getLocalLevel(): Promise<AbstractSublevel<Level<string, any>, any, string, V>> {
+        if (this.status === 'opening') {
+            await new Promise((resolve) => this.defer(() => resolve));
+        }
+        return new Promise((resolve) => this.nextTick(() => resolve(this._local)));
+    }
+
+    /**
+     * @returns The feed level
+     */
+    async getFeedLevel(): Promise<AbstractSublevel<Level<string, any>, any, string, Feed>> {
+        if (this.status === 'opening') {
+            await new Promise((resolve) => this.defer(() => resolve));
+        }
+        return new Promise((resolve) => this.nextTick(() => resolve(this._feed)));
+    }
+
+    /** @internal */
+    get id() {
+        return this._id;
+    }
+
+    /** @internal */
+    get sequence() {
+        return this._sequence;
+    }
+
+    /** @internal */
+    set sequence(sequence) {
+        this._sequence = sequence;
+    }
+
+    /** @internal */
+    get index() {
+        return this._index;
+    }
+
+    /** @internal */
+    get data() {
+        return this._data;
+    }
+
+    /** @internal */
+    get realdb() {
+        return this._db;
+    }
+
+    /** @internal */
+    get feed() {
+        return this._feed;
+    }
+
+    /** @internal */
+    get friends() {
+        return this._friends;
     }
 }

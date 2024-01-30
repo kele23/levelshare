@@ -131,37 +131,31 @@ export class SyncServer {
             direction: 'push',
         });
 
-        // save to transaction map and start timeout to clear the map if not writte
+        // save to transaction map
         this._transactionMap.set(request.transaction, result);
-        setTimeout(() => {
-            const result = this._transactionMap.get(request.transaction);
-            if (!result) return;
-            this._transactionMap.delete(request.transaction);
-            result.batch.close();
-        }, 30000);
-
         return { keys: result.toGet, ok: true, transaction: request.transaction };
     }
 
     protected async _pushReceive(request: PushSyncRequest): Promise<PushSyncResponse> {
-        const result = this._transactionMap.get(request.transaction);
-        if (!result) throw new Error('Transaction expired');
-
         const dataLevel = this._db.data;
+        const batch = dataLevel.batch();
+
         const keys = request.keys;
         const values = request.values;
         for (let i = 0; i < values.length; i++) {
             const key = keys[i];
             const value = values[i];
             const base64Value = base64ToBytes(value);
-            result.batch.put(key, base64Value, { valueEncoding: 'buffer', sublevel: dataLevel });
+
+            batch.put(key, base64Value, { valueEncoding: 'buffer' });
         }
 
-        await result.batch.write();
-        this._transactionMap.delete(request.transaction);
+        await batch.write();
 
         // emit local sync
-        emitSync({ shareLevel: this._db, from: result.from, to: result.to });
+        const result = this._transactionMap.get(request.transaction);
+        emitSync({ shareLevel: this._db, from: result!.from, to: result!.to });
+        this._transactionMap.delete(request.transaction);
         return { ok: true, transaction: request.transaction };
     }
 }

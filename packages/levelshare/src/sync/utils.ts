@@ -42,22 +42,25 @@ export const importFeed = async ({
     // pull ( rebase my feed on top of remote feed )
     // push ( put remote feed on top of my feed )
     if (direction == 'pull') {
-        // 2 - move current feed on top of endSeq
+        // 2 - move current sequence on top of endSeq
         shareLevel.sequence = nextSequence(endSeq); // next ( sequence is always the next )
+        const checkSeq = shareLevel.sequence;
 
         // 3 - move current feed up ( all feed ), over imported feed
         const fUpOpt: any = {};
         if (startSeq) {
             fUpOpt['gt'] = startSeq;
         }
+
+        let newSeq = checkSeq;
         for await (const [feedKey, value] of feedLevel.iterator(fUpOpt)) {
             const feed = value;
             const oldKey = feed.key;
 
             if (!modKeys.includes(oldKey)) {
                 // 3a - add feed if not in conflict
-                const seq = shareLevel.getIncrementSequence();
-                batch.put(seq, feed, { sublevel: feedLevel });
+                batch.put(newSeq, feed, { sublevel: feedLevel });
+                newSeq = nextSequence(newSeq);
             } else {
                 // 3b - remove data associated to feed if in conflict & remove feed in conflict
                 const dataKey = `${value.key}#${value.seq}`;
@@ -65,11 +68,20 @@ export const importFeed = async ({
                 batch.del(feedKey, { sublevel: feedLevel });
             }
         }
+
+        // real check that no one write on feed during feed batch creation ( after is not a problem )
+        if (checkSeq != shareLevel.sequence) {
+            batch.close();
+            throw new Error('Someone write during import feed, aborting');
+        }
+
+        shareLevel.sequence = newSeq;
     } else {
         // check status of current feed, if not expected throw error
         const tmpStart = startSeq ? nextSequence(startSeq) : nextSequence(); // next
         if (compareSequence(shareLevel.sequence, tmpStart) != 0) {
-            throw new Error('Cannot push on top of modified feed');
+            batch.close();
+            throw new Error('Cannot push on top of different feed, you need to pull before');
         }
 
         shareLevel.sequence = nextSequence(endSeq);
@@ -86,6 +98,7 @@ export const importFeed = async ({
         // 6 - add index  &  7 - add to download
         if (value.type == 'put') {
             batch.put(value.key, dataKey, { sublevel: indexLevel });
+            batch.put(dataKey, `__${otherId}__`, { sublevel: dataLevel });
             toGet.add(dataKey);
         } else {
             batch.del(value.key, { sublevel: indexLevel });
@@ -93,7 +106,8 @@ export const importFeed = async ({
         }
     }
 
-    return { toGet: Array.from(toGet), batch, from: initialSeq, to: shareLevel.sequence };
+    await batch.write();
+    return { toGet: Array.from(toGet), from: initialSeq, to: shareLevel.sequence };
 };
 
 export const emitSync = ({ shareLevel, from, to }: { shareLevel: ShareLevel; from: string; to: string }) => {
