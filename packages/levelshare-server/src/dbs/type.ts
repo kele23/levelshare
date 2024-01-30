@@ -7,3 +7,9 @@ export const FeedQuery = Type.Object({
 });
 
 export type FeedQueryType = Static<typeof FeedQuery>;
+
+export const FeedResp = Type.Object({
+    sequence: Type.String(),
+});
+
+export type FeedRespType = Static<typeof FeedResp>;

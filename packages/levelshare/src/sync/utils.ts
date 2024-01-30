@@ -1,6 +1,6 @@
 import { ShareLevel } from '../index.js';
 import { Feed, FeedImportResult, Friend } from '../type.js';
-import { getSequence } from '../utils/sequence.js';
+import { compareSequence, nextSequence } from '../utils/sequence.js';
 
 /**
  * Import a Feed from another ShareLevel
@@ -43,60 +43,53 @@ export const importFeed = async ({
     // push ( put remote feed on top of my feed )
     if (direction == 'pull') {
         // 2 - move current feed on top of endSeq
-        const currSeq = shareLevel.sequence;
-        shareLevel.sequence = endSeq; // TODO: Calculate and set last sequence value directly
-        let tmpSeq = shareLevel.sequence;
+        shareLevel.sequence = nextSequence(endSeq); // next ( sequence is always the next )
 
-        // increment sequence to last (sync)
-        while (shareLevel.sequence.localeCompare(currSeq) <= 0) {
-            shareLevel.getIncrementSequence();
-        }
-
-        // 3 - move current feed up, over imported feed
-        const fUpOpt: any = { lte: currSeq };
+        // 3 - move current feed up ( all feed ), over imported feed
+        const fUpOpt: any = {};
         if (startSeq) {
             fUpOpt['gt'] = startSeq;
         }
-        for await (const [_, value] of feedLevel.iterator(fUpOpt)) {
-            tmpSeq = getSequence(tmpSeq);
-            const seq = tmpSeq;
+        for await (const [feedKey, value] of feedLevel.iterator(fUpOpt)) {
             const feed = value;
             const oldKey = feed.key;
 
             if (!modKeys.includes(oldKey)) {
                 // 3a - add feed if not in conflict
+                const seq = shareLevel.getIncrementSequence();
                 batch.put(seq, feed, { sublevel: feedLevel });
             } else {
-                // 3b - remove data associated to feed if in conflict
+                // 3b - remove data associated to feed if in conflict & remove feed in conflict
                 const dataKey = `${value.key}#${value.seq}`;
                 batch.del(dataKey, { sublevel: dataLevel });
+                batch.del(feedKey, { sublevel: feedLevel });
             }
         }
     } else {
-        const tmpStart = startSeq ?? getSequence();
         // check status of current feed, if not expected throw error
-        if (shareLevel.sequence.localeCompare(tmpStart) < 0) {
+        const tmpStart = startSeq ? nextSequence(startSeq) : nextSequence(); // next
+        if (compareSequence(shareLevel.sequence, tmpStart) != 0) {
             throw new Error('Cannot push on top of modified feed');
         }
 
-        shareLevel.sequence = endSeq;
+        shareLevel.sequence = nextSequence(endSeq);
     }
 
     // iterate over feed result and
     for (const [key, value] of feed) {
         // 4 - add feed
-        batch = batch.put(key, value, { sublevel: feedLevel });
+        batch.put(key, value, { sublevel: feedLevel });
 
         // 5 - create data key
         const dataKey = `${value.key}#${value.seq}`;
 
         // 6 - add index  &  7 - add to download
         if (value.type == 'put') {
-            batch = batch.put(value.key, dataKey, { sublevel: indexLevel });
+            batch.put(value.key, dataKey, { sublevel: indexLevel });
             toGet.add(dataKey);
         } else {
-            batch = batch.del(value.key, { sublevel: indexLevel });
-            toGet.delete(dataKey);
+            batch.del(value.key, { sublevel: indexLevel });
+            batch.put(dataKey, '__del__', { sublevel: dataLevel });
         }
     }
 

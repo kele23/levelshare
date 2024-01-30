@@ -20,7 +20,7 @@ import {
 import UUID from 'pure-uuid';
 import { Feed, FeedImportResult, Friend } from '../type.js';
 import { logger } from '../utils/logger.js';
-import { getSequence } from '../utils/sequence.js';
+import { nextSequence } from '../utils/sequence.js';
 import { ShareIterator } from './share-iterator.js';
 
 export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
@@ -57,7 +57,7 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
         this._location = location;
         this._level = level;
         this._id = id ? id : new UUID(4).format('std'); // default id
-        this._sequence = getSequence(); // zero
+        this._sequence = nextSequence(); // zero
     }
 
     ////////////////////////////////// LEVEL
@@ -340,7 +340,8 @@ export class ShareLevel<V = string> extends AbstractLevel<any, string, V> {
      * @returns The sequence
      */
     public getIncrementSequence() {
-        this._sequence = getSequence(this._sequence);
-        return this._sequence;
+        const seq = this._sequence;
+        this._sequence = nextSequence(this._sequence);
+        return seq;
     }
 }

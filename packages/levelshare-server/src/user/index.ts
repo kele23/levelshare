@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import { FastifyInstance } from 'fastify';
 import { Level } from 'level';
 import { nanoid } from 'nanoid';
-import { User, UserTokenPayload } from './type.js';
+import { User, UserTokenPayload } from '../auth/type.js';
 
 export const ADMIN_USER = 'admin';
 export const ADMINISTRATOR_ROLE = 'administrator';

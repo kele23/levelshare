@@ -33,6 +33,12 @@ export const RefreshReq = Type.Object({
 
 export type RefreshReqType = Static<typeof RefreshReq>;
 
+export const RefreshResp = Type.Object({
+    token: Type.String(),
+});
+
+export type RefreshRespType = Static<typeof RefreshResp>;
+
 export const CheckResp = Type.Object({
     username: Type.String(),
     roles: Type.Array(Type.String()),

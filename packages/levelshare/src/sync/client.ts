@@ -58,7 +58,7 @@ export class SyncClient {
     protected async _pull(transaction: string) {
         const id = this._db.id;
 
-        logger.debug('>>>>> ', 'PULL');
+        logger.debug(`>>>>> ${transaction}`, 'PULL');
 
         /////////////////////////////////////////////////////////// DISCOVERY
         const discoveryRequest: DiscoverySyncRequest = {
@@ -67,14 +67,15 @@ export class SyncClient {
             type: 'discovery',
         };
 
-        logger.debug('>>>>> ', discoveryRequest);
-
+        logger.debug(`>>>>> ${transaction}`, discoveryRequest);
         const discoveryResponse = (await this._send(discoveryRequest)) as DiscoverySyncResponse;
+        logger.debug(`<<<<< ${transaction}`, discoveryResponse);
+
         if (!discoveryResponse.ok) {
-            throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
+            throw new Error('Cannot discovery due to an error: ' + discoveryResponse.message);
         }
 
-        logger.debug('<<<<< ', discoveryResponse);
+        
 
         const startSeq = discoveryResponse.startSeq;
         const endSeq = discoveryResponse.endSeq;
@@ -94,14 +95,14 @@ export class SyncClient {
             feedRequest['gt'] = startSeq;
         }
 
-        logger.debug('>>>>> ', feedRequest);
-
+        logger.debug(`>>>>> ${transaction}`, feedRequest);
         const feedResponse = (await this._send(feedRequest)) as FeedSyncResponse;
-        if (!feedResponse.ok) {
-            throw 'Cannot get feeed due to an error: ' + feedResponse.message;
-        }
+        logger.debug(`<<<<< ${transaction}`, feedResponse);
 
-        logger.debug('<<<<< ', feedResponse);
+        if (!feedResponse.ok) {
+            throw new Error('Cannot get feeed due to an error: ' + feedResponse.message);
+        }
+    
 
         /////////////////////////////////////////////////////////// BATCH
         const { toGet, batch, from, to } = await importFeed({
@@ -122,14 +123,15 @@ export class SyncClient {
             type: 'pull',
         };
 
-        logger.debug('>>>>> ', pullRequest);
-
+        logger.debug(`>>>>> ${transaction}`, pullRequest);
         const pullResponse = (await this._send(pullRequest)) as PullSyncResponse;
+        logger.debug(`<<<<< ${transaction}`, pullResponse);
+
         if (!pullResponse.ok) {
-            throw 'Cannot get pull due to an error: ' + pullResponse.message;
+            throw new Error('Cannot get pull due to an error: ' + pullResponse.message);
         }
 
-        logger.debug('<<<<< ', pullResponse);
+      
 
         for (let i = 0; i < toGet.length; i++) {
             const key = toGet[i];
@@ -147,7 +149,7 @@ export class SyncClient {
     protected async _push(transaction: string) {
         const id = this._db.id;
 
-        logger.debug('>>>>> ', 'PUSH');
+        logger.debug(`>>>>> ${transaction}`, 'PUSH');
 
         /////////////////////////////////////////////////////////// DISCOVERY
         const discoveryRequest: DiscoverySyncRequest = {
@@ -156,14 +158,13 @@ export class SyncClient {
             type: 'discovery',
         };
 
-        logger.debug('>>>>> ', discoveryRequest);
-
+        logger.debug(`>>>>> ${transaction}`, discoveryRequest);
         const discoveryResponse = (await this._send(discoveryRequest)) as DiscoverySyncResponse;
-        if (!discoveryResponse.ok) {
-            throw 'Cannot discovery due to an error: ' + discoveryResponse.message;
-        }
+        logger.debug(`<<<<< ${transaction}`, discoveryResponse);
 
-        logger.debug('<<<<< ', discoveryResponse);
+        if (!discoveryResponse.ok) {
+            throw new Error('Cannot discovery due to an error: ' + discoveryResponse.message);
+        }
 
         /////////////////////////////////////////////////////////// OFFER
         const friendsLevel = this._db.friends;
@@ -206,14 +207,13 @@ export class SyncClient {
             type: 'offer',
         };
 
-        logger.debug('>>>>> ', offerRequest);
-
+        logger.debug(`>>>>> ${transaction}`, offerRequest);
         const offerResponse = (await this._send(offerRequest)) as OfferSyncResponse;
-        if (!offerResponse.ok) {
-            throw 'Cannot get feeed due to an error: ' + offerResponse.message;
-        }
+        logger.debug(`<<<<< ${transaction}`, offerResponse);
 
-        logger.debug('<<<<< ', offerResponse);
+        if (!offerResponse.ok) {
+            throw new Error('Cannot get feeed due to an error: ' + offerResponse.message);
+        }
 
         /////////////////////////////////////////////////////////// PUSH
         const dataLevel = this._db.data;
@@ -226,13 +226,14 @@ export class SyncClient {
             type: 'push',
         };
 
-        logger.debug('>>>>> ', pushRequest);
-
+        logger.debug(`>>>>> ${transaction}`, pushRequest);
         const pushResponse = (await this._send(pushRequest)) as PushSyncResponse;
+        logger.debug(`<<<<< ${transaction}`, pushResponse);
+
         if (!pushResponse.ok) {
             throw 'Cannot get push due to an error: ' + pushResponse.message;
         }
 
-        logger.debug('<<<<< ', pushResponse);
+       
     }
 }

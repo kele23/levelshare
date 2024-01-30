@@ -12,10 +12,12 @@ import {
     LoginRespType,
     RefreshReq,
     RefreshReqType,
+    RefreshResp,
+    RefreshRespType,
     User,
     UserTokenPayload,
 } from './type.js';
-import { checkInitUsers, checkLogin, getUser } from './user.js';
+import { checkInitUsers, checkLogin, getUser } from '../user/index.js';
 
 declare module 'fastify' {
     interface FastifyInstance {
@@ -59,111 +61,103 @@ const AuthPlugin: FastifyPluginAsync<AuthOptions> = async (fastify: FastifyInsta
     });
     fastify.register(fastifyAuth);
 
-    //////// routes
-    fastify.after(() => {
-        fastify.route<{ Body: LoginReqType; Reply: LoginRespType }>({
-            method: 'POST',
-            url: '/auth/login',
-            schema: {
-                description: 'Login user using username & password',
-                tags: ['Auth'],
-                body: LoginReq,
-                response: {
-                    200: LoginResp,
-                },
-            },
-            preHandler: fastify.auth([fastify.verifyUsernamePassword]),
-            handler: async (req, rpl) => {
-                const user = await getUser(req.body.username, fastify.users);
+    //////// after
+    await fastify.after();
 
-                // main token
-                const token = await rpl.jwtSign({
+    //////// routes
+
+    fastify.route<{ Body: LoginReqType; Reply: LoginRespType }>({
+        method: 'POST',
+        url: '/auth/login',
+        schema: {
+            description: 'Login user using username & password',
+            tags: ['Auth'],
+            body: LoginReq,
+            response: {
+                200: LoginResp,
+            },
+        },
+        preHandler: fastify.auth([fastify.verifyUsernamePassword]),
+        handler: async (req, rpl) => {
+            const user = await getUser(req.body.username, fastify.users);
+
+            // main token
+            const token = await rpl.jwtSign({
+                username: req.body.username,
+                roles: user.roles,
+            });
+
+            // refresh token
+            const refreshToken = await rpl.jwtSign(
+                {
                     username: req.body.username,
                     roles: user.roles,
-                });
-
-                // refresh token
-                const refreshToken = await rpl.jwtSign(
-                    {
-                        username: req.body.username,
-                        roles: user.roles,
-                        refresh: true,
-                    },
-                    { expiresIn: '1d' },
-                );
-
-                // send response
-                rpl.code(200).send({ token, refreshToken });
-            },
-        });
-
-        fastify.route<{ Body: RefreshReqType; Reply: LoginRespType }>({
-            method: 'POST',
-            url: '/auth/refresh',
-            schema: {
-                description: 'Refresh user token',
-                tags: ['Auth'],
-                body: RefreshReq,
-                response: {
-                    200: LoginResp,
+                    refresh: true,
                 },
-            },
-            handler: async (req, rpl) => {
-                const payload = fastify.jwt.verify<UserTokenPayload>(req.body.refreshToken);
-                if (!payload.refresh) throw 'You need to pass refresh token';
+                { expiresIn: '1d' },
+            );
 
-                const user = payload as UserTokenPayload;
+            // send response
+            rpl.code(200).send({ token, refreshToken });
+        },
+    });
 
-                // main token
-                const token = await rpl.jwtSign({
-                    username: user.username,
-                    roles: user.roles,
-                });
+    fastify.route<{ Body: RefreshReqType; Reply: RefreshRespType }>({
+        method: 'POST',
+        url: '/auth/refresh',
+        schema: {
+            description: 'Refresh user token',
+            tags: ['Auth'],
+            body: RefreshReq,
+            response: {
+                200: RefreshResp,
+            },
+        },
+        handler: async (req, rpl) => {
+            const payload = fastify.jwt.verify<UserTokenPayload>(req.body.refreshToken);
+            if (!payload.refresh) throw 'You need to pass refresh token';
 
-                // refresh token
-                const refreshToken = await rpl.jwtSign(
-                    {
-                        username: user.username,
-                        roles: user.roles,
-                        refresh: true,
-                    },
-                    { expiresIn: '1d' },
-                );
+            const user = payload as UserTokenPayload;
 
-                // send response
-                rpl.code(200).send({ token, refreshToken });
-            },
-        });
+            // main token
+            const token = await rpl.jwtSign({
+                username: user.username,
+                roles: user.roles,
+            });
 
-        fastify.route<{ Reply: CheckRespType }>({
-            method: 'GET',
-            url: '/auth/check',
-            schema: {
-                description: 'Check user token',
-                tags: ['Auth'],
-                response: {
-                    200: CheckResp,
-                },
-            },
-            preHandler: fastify.auth([fastify.verifyJWT]),
-            handler: async (req, rpl) => {
-                const pay = req.user as UserTokenPayload;
-                rpl.code(200).send(pay);
-            },
-        });
+            // send response
+            rpl.code(200).send({ token });
+        },
+    });
 
-        fastify.route({
-            method: 'GET',
-            url: '/auth/logout',
-            schema: {
-                description: 'Logout user',
-                tags: ['Auth'],
+    fastify.route<{ Reply: CheckRespType }>({
+        method: 'GET',
+        url: '/auth/check',
+        schema: {
+            description: 'Check user token',
+            tags: ['Auth'],
+            response: {
+                200: CheckResp,
             },
-            preHandler: fastify.auth([fastify.verifyJWT]),
-            handler: async (_, rpl) => {
-                rpl.code(200).send();
-            },
-        });
+        },
+        preHandler: fastify.auth([fastify.verifyJWT]),
+        handler: async (req, rpl) => {
+            const pay = req.user as UserTokenPayload;
+            rpl.code(200).send(pay);
+        },
+    });
+
+    fastify.route({
+        method: 'GET',
+        url: '/auth/logout',
+        schema: {
+            description: 'Logout user',
+            tags: ['Auth'],
+        },
+        preHandler: fastify.auth([fastify.verifyJWT]),
+        handler: async (_, rpl) => {
+            rpl.code(200).send();
+        },
     });
 };
 export default fp(AuthPlugin);

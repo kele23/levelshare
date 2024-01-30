@@ -1,9 +1,9 @@
 import { Level } from 'level';
 import { temporaryDirectory } from 'tempy';
 import { ShareLevel, SyncRequest, SyncResponse } from '../src/index.js';
-import { delayPromise, getAllDB, printDB, test } from './utils.js';
-import { SyncServer } from '../src/sync/server.js';
 import { SyncClient } from '../src/sync/client.js';
+import { SyncServer } from '../src/sync/server.js';
+import { delayPromise, getAllDB, printDB, test } from './utils.js';
 
 try {
     await test('basic sync', async function (t) {
@@ -25,26 +25,15 @@ try {
 
         await client.sync();
 
-        // client
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
-
         const checkValue = [
             ['A', 'A'],
             ['B', 'B'],
             ['C', 'C'],
             ['D', 'D'],
         ];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client data');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server data');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('basic sync - events', async function (t) {
@@ -64,13 +53,9 @@ try {
             });
         });
 
-        server.db.on("db:sync", () => {
-            
-        })
+        server.db.on('db:sync', () => {});
 
         await client.sync();
-
-        
 
         const checkValue = [
             ['A', 'A'],
@@ -81,6 +66,7 @@ try {
         t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
         t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
         t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'event');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('basic sync - external sublevel', async function (t) {
@@ -107,26 +93,15 @@ try {
 
         await client.sync();
 
-        // client
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
-
         const checkValue = [
             ['A', 'A'],
             ['B', 'B'],
             ['C', 'C'],
             ['D', 'D'],
         ];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('basic sync + del', async function (t) {
@@ -148,23 +123,13 @@ try {
 
         await client.sync();
 
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator()) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
-
         const checkValue = [
             ['A', 'A'],
             ['D', 'D'],
         ];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('sync with empty db', async function (t) {
@@ -184,20 +149,11 @@ try {
         });
 
         await client.sync();
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator()) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
 
         const checkValue = [['A', 'A']];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('sync empty db', async function (t) {
@@ -221,6 +177,7 @@ try {
         const checkValue = [['A', 'A']];
         t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
         t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('sync conflict', async function (t) {
@@ -241,20 +198,11 @@ try {
         });
 
         await client.sync();
-        const finalValueC: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator()) {
-            finalValueC.push([key, value]);
-        }
-
-        // server
-        const finalValueS: [string, string][] = [];
-        for await (const [key, value] of clientDB.iterator<string>({ valueEncoding: 'utf8' })) {
-            finalValueS.push([key, value]);
-        }
 
         const checkValue = [['A', 'SV-A']];
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueC), 'client');
-        t.assert(JSON.stringify(checkValue) == JSON.stringify(finalValueS), 'server');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 
     await test('sync conflict x 3 - no concurrency', async function (t) {
@@ -299,6 +247,7 @@ try {
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(aDB)), 'A OK');
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(bDB)), 'B OK');
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(cDB)), 'C OK');
+        t.assert(aDB.sequence == bDB.sequence && bDB.sequence == cDB.sequence, 'feed equals');
     });
 
     await test('sync conflict x 3 - with concurrency', async function (t) {
@@ -362,6 +311,39 @@ try {
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(aDB)), 'A OK');
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(bDB)), 'B OK');
         t.assert(JSON.stringify(Value) == JSON.stringify(await getAllDB(cDB)), 'C OK');
+        t.assert(aDB.sequence == bDB.sequence && bDB.sequence == cDB.sequence, 'feed equals');
+    });
+
+    await test('basic with concurrent del', async function (t) {
+        const clientDB = new ShareLevel({ location: temporaryDirectory() });
+        const serverDB = new ShareLevel({ location: temporaryDirectory() });
+
+        await clientDB.batch().put('A', 'A').put('B', 'B').write();
+        await serverDB.batch().put('C', 'C').put('D', 'D').write();
+
+        const server = new SyncServer(serverDB);
+        const client = new SyncClient(clientDB);
+        client.setTransporter((data: SyncRequest): Promise<SyncResponse> => {
+            return new Promise((resolve) => {
+                clientDB.nextTick(async () => {
+                    resolve(await server.receive(data));
+                });
+            });
+        });
+
+        const promise = client.sync();
+        const promiseB = clientDB.del('A');
+        await promise;
+        await promiseB;
+
+        const checkValue = [
+            ['B', 'B'],
+            ['C', 'C'],
+            ['D', 'D'],
+        ];
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(clientDB)), 'client data');
+        t.assert(JSON.stringify(checkValue) == JSON.stringify(await getAllDB(serverDB)), 'server data');
+        t.assert(serverDB.sequence == clientDB.sequence, 'feed equals');
     });
 } catch (e) {
     console.error('EXIT - test failed');
